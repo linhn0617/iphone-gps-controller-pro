@@ -56,9 +56,13 @@
 
   <!-- Mode tabs -->
   <div class="mode-tabs">
-    <div class="mode-tab active" id="tab-normal" onclick="setMode('normal')">一般</div>
-    <div class="mode-tab" id="tab-cruise" onclick="setMode('cruise')">巡航</div>
-    <div class="mode-tab" id="tab-fav" onclick="setMode('fav')">⭐</div>
+    <div class="mode-tab active" id="tab-normal"  onclick="setMode('normal')">一般</div>
+    <div class="mode-tab" id="tab-cruise"          onclick="setMode('cruise')">巡航</div>
+    <div class="mode-tab" id="tab-joystick"        onclick="setMode('joystick')">搖桿</div>
+    <div class="mode-tab" id="tab-walk"            onclick="setMode('walk')">漫步</div>
+    <div class="mode-tab" id="tab-multistop"       onclick="setMode('multistop')">多點</div>
+    <div class="mode-tab" id="tab-loop"            onclick="setMode('loop')">循環</div>
+    <div class="mode-tab" id="tab-fav"             onclick="setMode('fav')">⭐</div>
   </div>
 
   <!-- ── NORMAL PANEL ── -->
@@ -196,6 +200,110 @@
       <button class="btn btn-ghost" onclick="undoWaypoint()" title="撤銷">↩</button>
     </div>
   </div><!-- end panel-cruise -->
+
+  <!-- ── JOYSTICK PANEL ── -->
+  <div class="panel hidden" id="panel-joystick">
+    <div class="sec-hdr" style="margin-bottom:8px">虛擬搖桿（WASD / 方向鍵）</div>
+    <div style="color:var(--muted);font-size:12px;margin-bottom:8px">需先設定一個起始 GPS 位置</div>
+    <div class="field-row">
+      <label style="color:var(--muted);font-size:12px;white-space:nowrap">模式</label>
+      <select id="joy-mode" style="flex:1;padding:5px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px">
+        <option value="walking">步行</option>
+        <option value="running">跑步</option>
+        <option value="driving">駕車</option>
+      </select>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" style="flex:1" id="joy-start-btn" onclick="startJoystick()">▶ 啟動搖桿</button>
+      <button class="btn btn-ghost" onclick="stopCurrentMode()">■ 停止</button>
+    </div>
+    <div id="joy-status" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+    <div class="hint">啟動後用 WASD / 方向鍵移動。按住不放持續移動。</div>
+  </div><!-- end panel-joystick -->
+
+  <!-- ── RANDOM WALK PANEL ── -->
+  <div class="panel hidden" id="panel-walk">
+    <div class="sec-hdr" style="margin-bottom:8px">隨機漫步</div>
+    <div class="field-row">
+      <label style="color:var(--muted);font-size:12px;white-space:nowrap">中心</label>
+      <button class="btn btn-ghost" style="flex:1;font-size:12px" onclick="setWalkCenter()">📍 使用目前位置</button>
+    </div>
+    <div id="walk-center-display" style="font-size:11px;color:var(--primary);margin-bottom:6px">尚未設定中心點</div>
+    <div class="field-row">
+      <label style="color:var(--muted);font-size:12px;white-space:nowrap">半徑</label>
+      <input type="number" id="walk-radius" value="500" min="50" max="50000" style="width:80px;text-align:center"> <span style="color:var(--muted);font-size:12px">m</span>
+    </div>
+    <div class="field-row">
+      <label style="color:var(--muted);font-size:12px;white-space:nowrap">模式</label>
+      <select id="walk-mode" style="flex:1;padding:5px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px">
+        <option value="walking">步行</option>
+        <option value="running">跑步</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <label style="color:var(--muted);font-size:12px;white-space:nowrap">Seed</label>
+      <input type="number" id="walk-seed" placeholder="隨機" style="flex:1">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" style="flex:1" onclick="startRandomWalk()">▶ 開始漫步</button>
+      <button class="btn btn-ghost" onclick="stopCurrentMode()">■ 停止</button>
+    </div>
+  </div><!-- end panel-walk -->
+
+  <!-- ── MULTI-STOP PANEL ── -->
+  <div class="panel hidden" id="panel-multistop">
+    <div class="sec-hdr" style="margin-bottom:8px">多點導航</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px">右鍵地圖「加入航點」或切換巡航模式加點</div>
+    <div class="field-row">
+      <label style="color:var(--muted);font-size:12px;white-space:nowrap">停留秒數</label>
+      <input type="number" id="ms-stop-dur" value="5" min="0" max="3600" style="width:80px;text-align:center">
+    </div>
+    <div class="field-row">
+      <label style="color:var(--muted);font-size:12px;white-space:nowrap">模式</label>
+      <select id="ms-mode" style="flex:1;padding:5px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px">
+        <option value="walking">步行</option>
+        <option value="running">跑步</option>
+        <option value="driving">駕車</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <label style="color:var(--muted);font-size:12px">跳躍模式</label>
+      <input type="checkbox" id="ms-jump">
+    </div>
+    <div class="field-row">
+      <label style="color:var(--muted);font-size:12px">循環</label>
+      <input type="checkbox" id="ms-loop">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" style="flex:1" onclick="startMultiStop()">▶ 開始</button>
+      <button class="btn btn-ghost" onclick="stopCurrentMode()">■ 停止</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">航點數: <span id="ms-wp-count">0</span>（使用巡航模式的航點）</div>
+  </div><!-- end panel-multistop -->
+
+  <!-- ── ROUTE LOOP PANEL ── -->
+  <div class="panel hidden" id="panel-loop">
+    <div class="sec-hdr" style="margin-bottom:8px">路線循環</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px">右鍵地圖「加入航點」，最後一點自動銜接回起點</div>
+    <div class="field-row">
+      <label style="color:var(--muted);font-size:12px;white-space:nowrap">圈數</label>
+      <input type="number" id="loop-laps" value="0" min="0" style="width:80px;text-align:center">
+      <span style="color:var(--muted);font-size:12px">（0=無限）</span>
+    </div>
+    <div class="field-row">
+      <label style="color:var(--muted);font-size:12px;white-space:nowrap">模式</label>
+      <select id="loop-mode" style="flex:1;padding:5px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px">
+        <option value="walking">步行</option>
+        <option value="running">跑步</option>
+        <option value="driving">駕車</option>
+      </select>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" style="flex:1" onclick="startRouteLoop()">▶ 開始循環</button>
+      <button class="btn btn-ghost" onclick="stopCurrentMode()">■ 停止</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">完成圈數: <span id="loop-lap-count">0</span></div>
+  </div><!-- end panel-loop -->
 
   <!-- ── FAVORITES PANEL ── -->
   <div class="panel hidden" id="panel-fav">
@@ -432,16 +540,25 @@ function onMapClick(e) {
 }
 
 // ── Mode Toggle ────────────────────────────────────────────────────────
+const ALL_MODES = ['normal','cruise','joystick','walk','multistop','loop','fav'];
 function setMode(m) {
   state.mode = m;
-  ['normal','cruise','fav'].forEach(k => {
-    document.getElementById(`panel-${k}`).classList.toggle('hidden', m !== k);
-    document.getElementById(`tab-${k}`).classList.toggle('active', m === k);
+  ALL_MODES.forEach(k => {
+    const p = document.getElementById(`panel-${k}`);
+    const t = document.getElementById(`tab-${k}`);
+    if (p) p.classList.toggle('hidden', m !== k);
+    if (t) t.classList.toggle('active', m === k);
   });
-  const badges = { normal:'📍 一般模式', cruise:'🗺 巡航模式', fav:'⭐ 我的最愛' };
+  const badges = {
+    normal:'📍 一般模式', cruise:'🗺 巡航模式',
+    joystick:'🕹 搖桿模式', walk:'🚶 隨機漫步',
+    multistop:'📌 多點導航', loop:'🔁 路線循環', fav:'⭐ 我的最愛',
+  };
   document.getElementById('mode-badge').textContent = badges[m] || '';
   document.getElementById('map-hint').classList.toggle('hidden', m !== 'cruise');
   if (m === 'fav') renderFavorites();
+  if (m === 'multistop') document.getElementById('ms-wp-count').textContent = wpData.length;
+  if (m === 'loop') document.getElementById('ms-wp-count') && (document.getElementById('ms-wp-count').textContent = wpData.length);
 }
 
 // ── Device List ────────────────────────────────────────────────────────
@@ -968,15 +1085,164 @@ function renderFavorites() {
   });
 }
 
+// ── Stop current simulation ────────────────────────────────────────────
+function stopCurrentMode() {
+  if (state.deviceIdx === null) return;
+  fetch(`${META}/api/device/${state.deviceIdx}/stop`, { method: 'POST' })
+    .then(() => {
+      if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+      showToast('已停止', 'ok');
+      state.joystickActive = false;
+      document.getElementById('joy-start-btn').textContent = '▶ 啟動搖桿';
+      document.getElementById('joy-status').textContent = '';
+    })
+    .catch(() => showToast('無法連線 Backend', 'err'));
+}
+
+// ── Joystick mode ──────────────────────────────────────────────────────
+state.joystickActive = false;
+const _joy = { pressed: new Set(), lastSend: 0 };
+
+function startJoystick() {
+  if (state.deviceIdx === null) { showToast('請先選擇裝置', 'err'); return; }
+  const mode = document.getElementById('joy-mode').value;
+  fetch(`${META}/api/device/${state.deviceIdx}/joystick/start`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  }).then(r => r.json()).then(r => {
+    if (r.ok) {
+      state.joystickActive = true;
+      document.getElementById('joy-start-btn').textContent = '搖桿已啟動';
+      document.getElementById('joy-status').textContent = '用 WASD / 方向鍵移動';
+      showToast('搖桿已啟動', 'ok');
+    } else showToast(r.error || '啟動失敗', 'err');
+  }).catch(() => showToast('無法連線 Backend', 'err'));
+}
+
+const _DIR_MAP = {
+  ArrowUp: 0, w: 0, W: 0,
+  ArrowRight: 90, d: 90, D: 90,
+  ArrowDown: 180, s: 180, S: 180,
+  ArrowLeft: 270, a: 270, A: 270,
+};
+
+function _sendJoystickInput() {
+  if (!state.joystickActive || _joy.pressed.size === 0) return;
+  const dirs = [..._joy.pressed].map(k => _DIR_MAP[k]).filter(v => v !== undefined);
+  if (!dirs.length) return;
+  const avgSin = dirs.reduce((s, d) => s + Math.sin(d * Math.PI / 180), 0) / dirs.length;
+  const avgCos = dirs.reduce((s, d) => s + Math.cos(d * Math.PI / 180), 0) / dirs.length;
+  const dir = (Math.atan2(avgSin, avgCos) * 180 / Math.PI + 360) % 360;
+  sendWS('joystick_input', { direction: dir, intensity: 1.0, udid: null });
+}
+
+setInterval(() => {
+  if (state.joystickActive && _joy.pressed.size > 0) _sendJoystickInput();
+}, 100);
+
+// ── Random Walk mode ───────────────────────────────────────────────────
+state.walkCenter = null;
+function setWalkCenter() {
+  if (!state.lat) { showToast('請先設定一個位置', 'err'); return; }
+  state.walkCenter = { lat: state.lat, lng: state.lon };
+  document.getElementById('walk-center-display').textContent =
+    `${state.lat.toFixed(5)}, ${state.lon.toFixed(5)}`;
+}
+function startRandomWalk() {
+  if (state.deviceIdx === null) { showToast('請先選擇裝置', 'err'); return; }
+  if (!state.walkCenter) { showToast('請先設定中心點', 'err'); return; }
+  const radius = parseFloat(document.getElementById('walk-radius').value) || 500;
+  const mode = document.getElementById('walk-mode').value;
+  const seedVal = document.getElementById('walk-seed').value.trim();
+  const body = {
+    center_lat: state.walkCenter.lat, center_lng: state.walkCenter.lng,
+    radius_m: radius, mode,
+    ...(seedVal ? { seed: parseInt(seedVal) } : {}),
+  };
+  fetch(`${META}/api/device/${state.deviceIdx}/random-walk/start`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(r => r.json()).then(r => {
+    if (r.ok) showToast('隨機漫步已開始', 'ok');
+    else showToast(r.error || '啟動失敗', 'err');
+  }).catch(() => showToast('無法連線 Backend', 'err'));
+}
+
+// ── Multi-Stop mode ────────────────────────────────────────────────────
+function startMultiStop() {
+  if (state.deviceIdx === null) { showToast('請先選擇裝置', 'err'); return; }
+  if (wpData.length < 2) { showToast('請至少加入 2 個航點（巡航模式）', 'err'); return; }
+  const waypoints = wpData.map(w => ({ lat: w.lat, lng: w.lon }));
+  const body = {
+    waypoints,
+    mode: document.getElementById('ms-mode').value,
+    stop_duration: parseFloat(document.getElementById('ms-stop-dur').value) || 5,
+    loop: document.getElementById('ms-loop').checked,
+    jump_mode: document.getElementById('ms-jump').checked,
+  };
+  fetch(`${META}/api/device/${state.deviceIdx}/multi-stop/start`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(r => r.json()).then(r => {
+    if (r.ok) showToast('多點導航已開始', 'ok');
+    else showToast(r.error || '啟動失敗', 'err');
+  }).catch(() => showToast('無法連線 Backend', 'err'));
+}
+
+// ── Route Loop mode ────────────────────────────────────────────────────
+function startRouteLoop() {
+  if (state.deviceIdx === null) { showToast('請先選擇裝置', 'err'); return; }
+  if (wpData.length < 2) { showToast('請至少加入 2 個航點（巡航模式）', 'err'); return; }
+  const waypoints = wpData.map(w => ({ lat: w.lat, lng: w.lon }));
+  const laps = parseInt(document.getElementById('loop-laps').value) || 0;
+  const body = {
+    waypoints,
+    mode: document.getElementById('loop-mode').value,
+    ...(laps > 0 ? { lap_count: laps } : {}),
+  };
+  fetch(`${META}/api/device/${state.deviceIdx}/route-loop/start`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(r => r.json()).then(r => {
+    if (r.ok) showToast('路線循環已開始', 'ok');
+    else showToast(r.error || '啟動失敗', 'err');
+  }).catch(() => showToast('無法連線 Backend', 'err'));
+}
+
+// ── Extended WS events ─────────────────────────────────────────────────
+// Patch handleWSMessage to catch Phase 3 events
+const _origHandleWS = handleWSMessage;
+// Already handled in handleWSMessage; add lap_complete / stop_reached
+const _wsExtHandlers = {
+  lap_complete: d => { showToast(`第 ${d.lap} 圈完成`, 'ok'); document.getElementById('loop-lap-count') && (document.getElementById('loop-lap-count').textContent = d.lap); },
+  stop_reached: d => showToast(`抵達第 ${d.stop_idx + 1} 站`, 'ok'),
+  navigation_complete: d => { showToast('導航完成', 'ok'); if (routeLine) { map.removeLayer(routeLine); routeLine = null; } },
+  multi_stop_complete: () => showToast('多點導航完成', 'ok'),
+};
+// Augment WS handler
+const _base_onmessage_ref = { fn: null };
+function handleWSMessage(type, data) {
+  if (_wsExtHandlers[type]) { _wsExtHandlers[type](data); return; }
+  _origHandleWS(type, data);
+}
+
 // ── Keyboard shortcuts ─────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
+  if (state.joystickActive && _DIR_MAP[e.key] !== undefined) {
+    _joy.pressed.add(e.key); return;
+  }
   const k = { ArrowUp:'N',ArrowDown:'S',ArrowLeft:'W',ArrowRight:'E',
     w:'N',s:'S',a:'W',d:'E',q:'NW',e:'NE',z:'SW',c:'SE' }[e.key];
   if (k) pan(k);
   if (e.key === '+' || e.key === '=') map.zoomIn();
   if (e.key === '-') map.zoomOut();
   if (e.key === 'f' && state.lat) map.setView([state.lat, state.lon]);
+});
+document.addEventListener('keyup', e => {
+  _joy.pressed.delete(e.key);
+  if (_joy.pressed.size === 0 && state.joystickActive)
+    sendWS('joystick_stop', {});
 });
 </script>
 </body>

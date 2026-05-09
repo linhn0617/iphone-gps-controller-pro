@@ -56,6 +56,24 @@ class SimulationEngine:
         from backend.core.navigator import Navigator
         await Navigator(self).navigate(lat, lng, mode=mode, speed_kmh=speed_kmh, force_straight=force_straight)
 
+    async def start_joystick(self, mode: str = "walking") -> None:
+        from backend.core.joystick import JoystickHandler
+        await self.stop()
+        self.joystick_handler = JoystickHandler(self, mode=mode)
+        await self.joystick_handler.start()
+
+    async def start_random_walk(self, center_lat: float, center_lng: float, radius_m: float, **kwargs) -> None:
+        from backend.core.random_walk import RandomWalkHandler
+        await RandomWalkHandler(self).start(center_lat, center_lng, radius_m, **kwargs)
+
+    async def start_multi_stop(self, waypoints: list, **kwargs) -> None:
+        from backend.core.multi_stop import MultiStopNavigator
+        await MultiStopNavigator(self).start(waypoints, **kwargs)
+
+    async def start_route_loop(self, waypoints: list, **kwargs) -> None:
+        from backend.core.route_loop import RouteLooper
+        await RouteLooper(self).start_loop(waypoints, **kwargs)
+
     async def stop(self) -> None:
         if self._task and not self._task.done():
             self._stop_event.set()

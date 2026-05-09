@@ -99,6 +99,105 @@ async def route_stop(request):
     return web.json_response({'ok': True})
 
 
+async def route_joystick_start(request):
+    ctx, eng = _get_engine(request)
+    if not ctx:
+        return web.json_response({'ok': False, 'error': 'device not found'}, status=404)
+    if not ctx.state['connected']:
+        return web.json_response({'ok': False, 'error': 'GPS not connected'}, status=503)
+    if not eng:
+        return web.json_response({'ok': False, 'error': 'engine not ready'}, status=503)
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    mode = data.get('mode', 'walking')
+    await eng.start_joystick(mode=mode)
+    return web.json_response({'ok': True})
+
+
+async def route_random_walk_start(request):
+    ctx, eng = _get_engine(request)
+    if not ctx:
+        return web.json_response({'ok': False, 'error': 'device not found'}, status=404)
+    if not ctx.state['connected']:
+        return web.json_response({'ok': False, 'error': 'GPS not connected'}, status=503)
+    if not eng:
+        return web.json_response({'ok': False, 'error': 'engine not ready'}, status=503)
+    try:
+        data = await request.json()
+        center_lat = float(data['center_lat'])
+        center_lng = float(data['center_lng'])
+        radius_m   = float(data['radius_m'])
+    except Exception as e:
+        return web.json_response({'ok': False, 'error': str(e)}, status=400)
+
+    asyncio.create_task(eng.start_random_walk(
+        center_lat, center_lng, radius_m,
+        mode=data.get('mode', 'walking'),
+        speed_kmh=float(data['speed_kmh']) if 'speed_kmh' in data else None,
+        speed_min_kmh=float(data['speed_min_kmh']) if 'speed_min_kmh' in data else None,
+        speed_max_kmh=float(data['speed_max_kmh']) if 'speed_max_kmh' in data else None,
+        pause_min=float(data.get('pause_min', 1.0)),
+        pause_max=float(data.get('pause_max', 3.0)),
+        seed=int(data['seed']) if 'seed' in data else None,
+        straight_line=bool(data.get('straight_line', False)),
+    ))
+    return web.json_response({'ok': True})
+
+
+async def route_multi_stop_start(request):
+    ctx, eng = _get_engine(request)
+    if not ctx:
+        return web.json_response({'ok': False, 'error': 'device not found'}, status=404)
+    if not ctx.state['connected']:
+        return web.json_response({'ok': False, 'error': 'GPS not connected'}, status=503)
+    if not eng:
+        return web.json_response({'ok': False, 'error': 'engine not ready'}, status=503)
+    try:
+        data = await request.json()
+        waypoints = data['waypoints']
+    except Exception as e:
+        return web.json_response({'ok': False, 'error': str(e)}, status=400)
+
+    asyncio.create_task(eng.start_multi_stop(
+        waypoints,
+        mode=data.get('mode', 'walking'),
+        speed_kmh=float(data['speed_kmh']) if 'speed_kmh' in data else None,
+        stop_duration=float(data.get('stop_duration', 0.0)),
+        pause_min=float(data.get('pause_min', 1.0)),
+        pause_max=float(data.get('pause_max', 3.0)),
+        loop=bool(data.get('loop', False)),
+        jump_mode=bool(data.get('jump_mode', False)),
+        jump_interval=float(data.get('jump_interval', 2.0)),
+    ))
+    return web.json_response({'ok': True})
+
+
+async def route_route_loop_start(request):
+    ctx, eng = _get_engine(request)
+    if not ctx:
+        return web.json_response({'ok': False, 'error': 'device not found'}, status=404)
+    if not ctx.state['connected']:
+        return web.json_response({'ok': False, 'error': 'GPS not connected'}, status=503)
+    if not eng:
+        return web.json_response({'ok': False, 'error': 'engine not ready'}, status=503)
+    try:
+        data = await request.json()
+        waypoints = data['waypoints']
+    except Exception as e:
+        return web.json_response({'ok': False, 'error': str(e)}, status=400)
+
+    lap_count = int(data['lap_count']) if 'lap_count' in data else None
+    asyncio.create_task(eng.start_route_loop(
+        waypoints,
+        mode=data.get('mode', 'walking'),
+        speed_kmh=float(data['speed_kmh']) if 'speed_kmh' in data else None,
+        lap_count=lap_count,
+    ))
+    return web.json_response({'ok': True})
+
+
 async def route_device_status(request):
     ctx, eng = _get_engine(request)
     if not ctx:
