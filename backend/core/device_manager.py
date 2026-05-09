@@ -1,10 +1,24 @@
 import asyncio, inspect, json, logging, re, sys, time
+from typing import Callable, Awaitable
 
 from backend.config import (
     SCAN_SEC, TUNNEL_TIMEOUT, TUNNEL_RETRIES, TUNNEL_RETRY_SEC, DEVICE_BOOT_WAIT,
 )
 
 log = logging.getLogger("device_manager")
+
+# Callback invoked when a device is fully connected (tunnel up).
+# Signature: async (ctx: DeviceCtx) -> None
+_on_device_ready: Callable[["DeviceCtx"], Awaitable[None]] | None = None
+
+
+def register_device_ready_callback(fn: Callable[["DeviceCtx"], Awaitable[None]]) -> None:
+    global _on_device_ready
+    _on_device_ready = fn
+
+
+def get_devices() -> dict[str, "DeviceCtx"]:
+    return _devices
 
 _ANSI = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
@@ -304,5 +318,7 @@ async def setup_device(ctx: DeviceCtx):
     ok = await start_tunnel_with_retry(ctx)
     if ok:
         asyncio.create_task(gps_worker(ctx))
+        if _on_device_ready:
+            await _on_device_ready(ctx)
     else:
         ctx.state['error'] = 'Tunnel failed'

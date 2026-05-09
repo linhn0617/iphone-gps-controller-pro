@@ -255,8 +255,85 @@ window.onload = () => {
   initMap();
   refreshDevices();
   loadFavorites();
+  connectWS();
   setInterval(pollDevices, POLL_MS);
 };
+
+// ── WebSocket ──────────────────────────────────────────────────────────
+let _ws = null, _wsBackoff = 1000;
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = `${proto}//${location.host}/ws/status`;
+  try {
+    _ws = new WebSocket(url);
+  } catch(e) { scheduleWSReconnect(); return; }
+
+  _ws.onopen = () => {
+    _wsBackoff = 1000;
+    document.getElementById('launcher-sub').textContent = 'WebSocket 已連線';
+  };
+  _ws.onmessage = e => {
+    let msg; try { msg = JSON.parse(e.data); } catch { return; }
+    handleWSMessage(msg.type, msg.data);
+  };
+  _ws.onclose = _ws.onerror = () => scheduleWSReconnect();
+}
+function scheduleWSReconnect() {
+  setTimeout(() => connectWS(), _wsBackoff);
+  _wsBackoff = Math.min(_wsBackoff * 2, 30000);
+}
+function sendWS(type, data) {
+  if (_ws && _ws.readyState === WebSocket.OPEN)
+    _ws.send(JSON.stringify({ type, data }));
+}
+
+function handleWSMessage(type, data) {
+  if (type === 'position_update') {
+    const udid = data.udid, pos = data.position;
+    if (!pos) return;
+    const dev = state.devices.find(d => d.udid === udid);
+    const idx = dev ? dev.idx : null;
+    if (idx === null) return;
+    if (idx === state.deviceIdx) {
+      gotoCoord(pos.lat, pos.lng, true);
+    } else {
+      const m = getOrCreateMarkers(idx);
+      m.phone.setLatLng([pos.lat, pos.lng]);
+      m.pulse.setLatLng([pos.lat, pos.lng]);
+    }
+    // Update state cache
+    if (dev) { dev.last_lat = pos.lat; dev.last_lon = pos.lng; }
+  } else if (type === 'state_change') {
+    refreshDevices();
+  } else if (type === 'device_connected') {
+    refreshDevices();
+  } else if (type === 'device_disconnected') {
+    refreshDevices();
+  } else if (type === 'route_path') {
+    drawRoutePath(data.coords);
+  } else if (type === 'cooldown_active') {
+    showCooldownBanner(data.remaining_sec);
+  } else if (type === 'cooldown_ended') {
+    hideCooldownBanner();
+  }
+}
+
+function drawRoutePath(coords) {
+  if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+  if (!coords || coords.length < 2) return;
+  routeLine = L.polyline(coords.map(c => [c[0], c[1]]), {
+    color: '#4f98a3', weight: 3, opacity: 0.7, dashArray: '8,4'
+  }).addTo(map);
+}
+
+function showCooldownBanner(sec) {
+  const el = document.getElementById('cooldown-banner');
+  el.textContent = `冷卻中 ${Math.ceil(sec / 60)} 分鐘`;
+  el.style.display = 'block';
+}
+function hideCooldownBanner() {
+  document.getElementById('cooldown-banner').style.display = 'none';
+}
 
 function initMap() {
   map = L.map('map', { center: [state.lat, state.lon], zoom: 15, zoomControl: false });
