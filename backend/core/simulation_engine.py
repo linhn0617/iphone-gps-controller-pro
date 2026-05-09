@@ -49,6 +49,13 @@ class SimulationEngine:
         self.state = SimulationState.IDLE
         await self._emit("position_update", self._status_dict())
 
+    async def navigate(
+        self, lat: float, lng: float, *, mode: str = "walking",
+        speed_kmh: float | None = None, force_straight: bool = False,
+    ) -> None:
+        from backend.core.navigator import Navigator
+        await Navigator(self).navigate(lat, lng, mode=mode, speed_kmh=speed_kmh, force_straight=force_straight)
+
     async def stop(self) -> None:
         if self._task and not self._task.done():
             self._stop_event.set()

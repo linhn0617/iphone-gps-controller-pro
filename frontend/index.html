@@ -91,6 +91,16 @@
       </div>
     </div>
 
+    <!-- 移動速度 -->
+    <div>
+      <div class="sec-hdr" style="margin-bottom:8px">移動速度</div>
+      <select id="speed-select" style="width:100%;padding:6px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px">
+        <option value="walking">步行 (~3 km/h)</option>
+        <option value="running">跑步 (~5.5 km/h)</option>
+        <option value="driving">駕車 (~60 km/h)</option>
+      </select>
+    </div>
+
     <!-- 手動座標 -->
     <div>
       <div class="sec-hdr" style="margin-bottom:8px">手動輸入座標</div>
@@ -342,10 +352,58 @@ function initMap() {
   }).addTo(map);
   L.control.zoom({ position: 'topright' }).addTo(map);
   map.on('click', onMapClick);
+  map.on('contextmenu', onMapRightClick);
   map.on('mousemove', e => {
     document.getElementById('coord-hud').textContent =
       `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`;
   });
+}
+
+let _ctxMenu = null;
+function onMapRightClick(e) {
+  const { lat, lng } = e.latlng;
+  if (_ctxMenu) { _ctxMenu.remove(); _ctxMenu = null; }
+  const div = document.createElement('div');
+  div.className = 'map-ctx-menu';
+  div.style.cssText = `position:absolute;left:${e.originalEvent.clientX}px;top:${e.originalEvent.clientY}px;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:4px 0;min-width:150px;box-shadow:0 4px 16px rgba(0,0,0,.4)`;
+  const items = [
+    ['📍 設定 GPS', () => gotoCoord(lat, lng)],
+    ['🗺 導航到此', () => navigateTo(lat, lng)],
+    ['✈ 加入航點', () => addWaypoint(lat, lng)],
+  ];
+  items.forEach(([label, fn]) => {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.style.cssText = 'display:block;width:100%;background:none;border:none;color:var(--text);padding:8px 16px;text-align:left;cursor:pointer;font-size:13px';
+    btn.onmouseenter = () => btn.style.background = 'var(--border)';
+    btn.onmouseleave = () => btn.style.background = 'none';
+    btn.onclick = () => { fn(); div.remove(); _ctxMenu = null; };
+    div.appendChild(btn);
+  });
+  document.body.appendChild(div);
+  _ctxMenu = div;
+  setTimeout(() => document.addEventListener('click', () => { div.remove(); _ctxMenu = null; }, { once: true }), 0);
+}
+
+function navigateTo(lat, lng) {
+  if (state.deviceIdx === null) { showToast('請先選擇裝置', 'err'); return; }
+  const speedEl = document.getElementById('speed-select');
+  const mode = speedEl ? speedEl.value : 'walking';
+  fetch(`${META}/api/device/${state.deviceIdx}/navigate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lat, lng, mode }),
+  }).then(r => r.json()).then(r => {
+    if (r.ok) showToast('導航中...', 'ok');
+    else showToast(r.error || '導航失敗', 'err');
+  }).catch(() => showToast('無法連線 Backend', 'err'));
+}
+
+function stopNavigation() {
+  if (state.deviceIdx === null) return;
+  fetch(`${META}/api/device/${state.deviceIdx}/stop`, { method: 'POST' })
+    .then(() => { if (routeLine) { map.removeLayer(routeLine); routeLine = null; } showToast('已停止', 'ok'); })
+    .catch(() => showToast('無法連線 Backend', 'err'));
 }
 
 function getOrCreateMarkers(idx) {

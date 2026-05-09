@@ -1,3 +1,4 @@
+import asyncio
 from aiohttp import web
 from backend.core.device_manager import get_devices
 
@@ -65,6 +66,36 @@ async def route_clear(request):
     else:
         from backend.core.device_manager import _ClearCmd
         ctx._mailbox.post(_ClearCmd())
+    return web.json_response({'ok': True})
+
+
+async def route_navigate(request):
+    ctx, eng = _get_engine(request)
+    if not ctx:
+        return web.json_response({'ok': False, 'error': 'device not found'}, status=404)
+    if not ctx.state['connected']:
+        return web.json_response({'ok': False, 'error': 'GPS not connected'}, status=503)
+    try:
+        data = await request.json()
+        lat, lng = float(data['lat']), float(data['lng'])
+    except Exception as e:
+        return web.json_response({'ok': False, 'error': str(e)}, status=400)
+
+    mode = data.get('mode', 'walking')
+    speed_kmh = float(data['speed_kmh']) if 'speed_kmh' in data else None
+    force_straight = bool(data.get('force_straight', False))
+
+    if eng:
+        asyncio.create_task(eng.navigate(lat, lng, mode=mode, speed_kmh=speed_kmh, force_straight=force_straight))
+    return web.json_response({'ok': True})
+
+
+async def route_stop(request):
+    ctx, eng = _get_engine(request)
+    if not ctx:
+        return web.json_response({'ok': False, 'error': 'device not found'}, status=404)
+    if eng:
+        await eng.stop()
     return web.json_response({'ok': True})
 
 

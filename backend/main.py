@@ -12,6 +12,7 @@ from backend.core.device_manager import (
 from backend.core.simulation_engine import SimulationEngine
 from backend.api.location import (
     route_devices, route_set, route_clear, route_device_status,
+    route_navigate, route_stop,
 )
 from backend.api.websocket import route_ws_status, broadcast
 
@@ -110,6 +111,9 @@ async def main():
     app.router.add_post('/device/{idx}/set',         route_set)
     app.router.add_post('/device/{idx}/clear',       route_clear)
     app.router.add_get ('/device/{idx}/status',      route_device_status)
+
+    app.router.add_post('/api/device/{idx}/navigate', route_navigate)
+    app.router.add_post('/api/device/{idx}/stop',     route_stop)
 
     # WebSocket
     app.router.add_get('/ws/status', route_ws_status)

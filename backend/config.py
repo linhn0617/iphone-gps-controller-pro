@@ -43,6 +43,33 @@ COOLDOWN_TABLE = [
 
 DEFAULT_LOCATION = {"lat": 25.0330, "lng": 121.5654}
 
+
+def make_speed_profile(speed_kmh: float) -> dict:
+    mps = speed_kmh / 3.6
+    if mps < 2.0:
+        interval, jitter = 1.0, 0.3
+    elif mps < 8.0:
+        interval, jitter = 1.0, 0.5
+    else:
+        interval, jitter = 0.5, 1.2
+    return {"speed_mps": mps, "jitter": jitter, "update_interval": interval}
+
+
+def resolve_speed_profile(
+    *,
+    mode: str | None = None,
+    speed_kmh: float | None = None,
+    speed_min_kmh: float | None = None,
+    speed_max_kmh: float | None = None,
+) -> dict:
+    if speed_kmh is not None:
+        return make_speed_profile(speed_kmh)
+    if speed_min_kmh is not None and speed_max_kmh is not None:
+        import random
+        kmh = random.uniform(speed_min_kmh, speed_max_kmh)
+        return make_speed_profile(kmh)
+    return SPEED_PROFILES.get(mode or "walking", SPEED_PROFILES["walking"])
+
 API_HOST = "127.0.0.1"
 API_PORT = META_PORT
 
