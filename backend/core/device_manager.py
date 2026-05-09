@@ -70,6 +70,7 @@ class DeviceCtx:
         self.rsd_host    = None
         self.rsd_port    = None
         self.tunnel_proc = None
+        self._drain_task = None
         self._mailbox    = _Mailbox()
         self._start_t    = time.time()
         self.state = {
@@ -192,9 +193,9 @@ async def _try_start_tunnel(ctx: DeviceCtx) -> bool:
 
     ctx.tunnel_proc = proc
     rsd_host = rsd_port = None
-    deadline = asyncio.get_event_loop().time() + TUNNEL_TIMEOUT
+    deadline = asyncio.get_running_loop().time() + TUNNEL_TIMEOUT
 
-    while asyncio.get_event_loop().time() < deadline:
+    while asyncio.get_running_loop().time() < deadline:
         try:
             raw = await asyncio.wait_for(proc.stdout.readline(), timeout=3.0)
         except asyncio.TimeoutError:
@@ -217,7 +218,7 @@ async def _try_start_tunnel(ctx: DeviceCtx) -> bool:
             ctx.rsd_host = rsd_host
             ctx.rsd_port = rsd_port
             log.info(f'[{ctx.name}] Tunnel OK  {rsd_host}:{rsd_port}')
-            asyncio.create_task(_drain(proc.stdout))
+            ctx._drain_task = asyncio.create_task(_drain(proc.stdout))
             return True
 
     try:
@@ -326,10 +327,28 @@ async def _gps_worker_dvt(ctx: DeviceCtx):
             await asyncio.sleep(5)
 
 
+async def _legacy_command_loop(ctx: DeviceCtx, sim) -> None:
+    """Dispatch mailbox commands for an iOS 16 DtSimulateLocation session.
+
+    sim.set / sim.clear are synchronous USB calls; run_in_executor keeps them
+    off the event loop. Reads last position from ctx.state on reconnect.
+    """
+    loop = asyncio.get_running_loop()
+    if ctx.state.get('simulating') and ctx.state.get('last_lat') is not None:
+        await loop.run_in_executor(None, sim.set, ctx.state['last_lat'], ctx.state['last_lon'])
+    while True:
+        cmd = await ctx._mailbox.wait()
+        if isinstance(cmd, _ClearCmd):
+            await loop.run_in_executor(None, sim.clear)
+            ctx.state.update(simulating=False, last_lat=None, last_lon=None)
+        elif isinstance(cmd, _SetCmd):
+            await loop.run_in_executor(None, sim.set, cmd.lat, cmd.lon)
+            ctx.state.update(simulating=True, last_lat=cmd.lat, last_lon=cmd.lon)
+            ctx.state['set_count'] += 1
+
+
 async def _gps_worker_legacy(ctx: DeviceCtx):
     """iOS 16 path via DtSimulateLocation (no tunnel needed)."""
-    last_target = None
-
     while True:
         try:
             log.info(f'[{ctx.name}] Connecting GPS (legacy iOS 16)...')
@@ -343,37 +362,13 @@ async def _gps_worker_legacy(ctx: DeviceCtx):
                     ctx.state['connected'] = True
                     ctx.state['error']     = None
                     log.info(f'[{ctx.name}] GPS connected (legacy)')
-                    if last_target:
-                        sim.set(last_target.lat, last_target.lon)
-                    while True:
-                        cmd = await ctx._mailbox.wait()
-                        if isinstance(cmd, _ClearCmd):
-                            sim.clear()
-                            last_target = None
-                            ctx.state.update(simulating=False, last_lat=None, last_lon=None)
-                        elif isinstance(cmd, _SetCmd):
-                            sim.set(cmd.lat, cmd.lon)
-                            last_target = cmd
-                            ctx.state.update(simulating=True, last_lat=cmd.lat, last_lon=cmd.lon)
-                            ctx.state['set_count'] += 1
+                    await _legacy_command_loop(ctx, sim)
             else:
                 sim = DtSimulateLocation(ld)
                 ctx.state['connected'] = True
                 ctx.state['error']     = None
                 log.info(f'[{ctx.name}] GPS connected (legacy)')
-                if last_target:
-                    sim.set(last_target.lat, last_target.lon)
-                while True:
-                    cmd = await ctx._mailbox.wait()
-                    if isinstance(cmd, _ClearCmd):
-                        sim.clear()
-                        last_target = None
-                        ctx.state.update(simulating=False, last_lat=None, last_lon=None)
-                    elif isinstance(cmd, _SetCmd):
-                        sim.set(cmd.lat, cmd.lon)
-                        last_target = cmd
-                        ctx.state.update(simulating=True, last_lat=cmd.lat, last_lon=cmd.lon)
-                        ctx.state['set_count'] += 1
+                await _legacy_command_loop(ctx, sim)
         except Exception as e:
             ctx.state['connected']  = False
             ctx.state['simulating'] = False
