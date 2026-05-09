@@ -6,14 +6,10 @@ from typing import TYPE_CHECKING
 
 from backend.config import resolve_speed_profile
 from backend.models.schemas import MovementMode, ResumableSnapshot, SimulationState
-from backend.services.route_service import RouteService
-
 if TYPE_CHECKING:
     from backend.core.simulation_engine import SimulationEngine
 
 _log = logging.getLogger(__name__)
-
-_route_service = RouteService()
 
 
 class Navigator:
@@ -48,7 +44,7 @@ class Navigator:
 
         async def _run():
             try:
-                coords = await _route_service.get_route(
+                coords = await eng._route_service.get_route(
                     cur.lat, cur.lng, lat, lng,
                     mode=mode, force_straight=force_straight,
                 )

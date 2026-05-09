@@ -9,14 +9,10 @@ from typing import TYPE_CHECKING
 from backend.config import resolve_speed_profile
 from backend.models.schemas import ResumableSnapshot, SimulationState
 from backend.services.interpolator import RouteInterpolator
-from backend.services.route_service import RouteService
-
 if TYPE_CHECKING:
     from backend.core.simulation_engine import SimulationEngine
 
 _log = logging.getLogger(__name__)
-
-_route_service = RouteService()
 
 _MAX_GENERAL_ERRORS = 5
 _MAX_CONN_ERRORS    = 60
@@ -50,6 +46,15 @@ class RandomWalkHandler:
         rng = random.Random(seed)
         walk_count = 0
 
+        # Capture any existing snapshot's walk_count BEFORE overwriting it,
+        # so we can fast-forward the RNG to the correct position on resume.
+        prior_snap = eng._resume_snapshot
+        prior_walk_count = (
+            prior_snap.random_walk_count
+            if prior_snap and prior_snap.kind == "random_walk"
+            else 0
+        )
+
         snap = ResumableSnapshot(
             kind="random_walk",
             args={
@@ -61,9 +66,11 @@ class RandomWalkHandler:
         )
         eng._resume_snapshot = snap
 
-        if eng._resume_snapshot and eng._resume_snapshot.random_walk_count > 0:
-            for _ in range(eng._resume_snapshot.random_walk_count):
+        if prior_walk_count > 0:
+            for _ in range(prior_walk_count):
                 RouteInterpolator.random_point_in_radius(center_lat, center_lng, radius_m, rng)
+            walk_count = prior_walk_count
+            snap.random_walk_count = walk_count
 
         async def _run():
             nonlocal walk_count
@@ -89,7 +96,7 @@ class RandomWalkHandler:
                         cur_lat, cur_lng = cur.lat, cur.lng
 
                     try:
-                        coords = await _route_service.get_route(
+                        coords = await eng._route_service.get_route(
                             cur_lat, cur_lng, dest_lat, dest_lng,
                             mode=mode, force_straight=straight_line,
                         )

@@ -8,14 +8,11 @@ from typing import TYPE_CHECKING
 from backend.config import resolve_speed_profile
 from backend.models.schemas import ResumableSnapshot, SimulationState
 from backend.services.interpolator import RouteInterpolator
-from backend.services.route_service import RouteService
-
 if TYPE_CHECKING:
     from backend.core.simulation_engine import SimulationEngine
 
 _log = logging.getLogger(__name__)
 
-_route_service = RouteService()
 _NEAR_THRESHOLD_M = 50.0
 
 
@@ -68,7 +65,7 @@ class MultiStopNavigator:
                             wp_coords[0][0], wp_coords[0][1],
                         )
                         if dist > _NEAR_THRESHOLD_M:
-                            coords = await _route_service.get_route(
+                            coords = await eng._route_service.get_route(
                                 eng.position.lat, eng.position.lng,
                                 wp_coords[0][0], wp_coords[0][1],
                                 mode=mode,
@@ -95,7 +92,7 @@ class MultiStopNavigator:
                             except asyncio.TimeoutError:
                                 pass
                         else:
-                            coords = await _route_service.get_route(A[0], A[1], B[0], B[1], mode=mode)
+                            coords = await eng._route_service.get_route(A[0], A[1], B[0], B[1], mode=mode)
                             await eng._emit("route_path", {"udid": eng.udid, "coords": coords})
                             await eng._move_along_route(coords, profile)
 

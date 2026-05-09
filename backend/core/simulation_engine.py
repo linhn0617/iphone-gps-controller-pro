@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from backend.api.websocket import broadcast
 from backend.models.schemas import (
@@ -11,17 +11,15 @@ from backend.models.schemas import (
 )
 from backend.services.interpolator import RouteInterpolator
 
-if TYPE_CHECKING:
-    pass
-
 _log = logging.getLogger(__name__)
 
 
 class SimulationEngine:
-    def __init__(self, udid: str, set_pos_fn, clear_pos_fn):
+    def __init__(self, udid: str, set_pos_fn, clear_pos_fn, *, route_service=None):
         self.udid = udid
         self._set_pos_fn = set_pos_fn    # async fn(lat, lng) — calls GPS worker
         self._clear_pos_fn = clear_pos_fn  # async fn()
+        self._route_service = route_service
 
         self.state = SimulationState.IDLE
         self.position: Coordinate | None = None
@@ -167,16 +165,7 @@ class SimulationEngine:
         await broadcast(event_type, data)
 
     def _status_dict(self) -> dict[str, Any]:
-        return SimulationStatus(
-            udid=self.udid,
-            state=self.state,
-            position=self.position,
-            mode=self.mode,
-            speed_kmh=self.speed_kmh,
-            destination=self.destination,
-            is_primary=self.is_primary,
-            connected=self.connected,
-        ).to_dict()
+        return self.get_status().to_dict()
 
     def get_status(self) -> SimulationStatus:
         return SimulationStatus(

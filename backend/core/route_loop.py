@@ -6,14 +6,10 @@ from typing import TYPE_CHECKING
 
 from backend.config import resolve_speed_profile
 from backend.models.schemas import ResumableSnapshot, SimulationState
-from backend.services.route_service import RouteService
-
 if TYPE_CHECKING:
     from backend.core.simulation_engine import SimulationEngine
 
 _log = logging.getLogger(__name__)
-
-_route_service = RouteService()
 
 
 class RouteLooper:
@@ -58,7 +54,7 @@ class RouteLooper:
                             return
                         A, B = closed[leg_idx], closed[leg_idx + 1]
                         profile = resolve_speed_profile(mode=mode, speed_kmh=speed_kmh)
-                        coords = await _route_service.get_route(A[0], A[1], B[0], B[1], mode=mode)
+                        coords = await eng._route_service.get_route(A[0], A[1], B[0], B[1], mode=mode)
                         await eng._emit("route_path", {"udid": eng.udid, "coords": coords})
                         await eng._move_along_route(coords, profile)
                         if eng._stop_event.is_set():

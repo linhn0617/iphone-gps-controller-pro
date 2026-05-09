@@ -29,6 +29,7 @@ from backend.api.bookmark import (
     route_migrate as route_bookmark_migrate,
     route_goldditto_start,
 )
+from backend.services.route_service import RouteService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,7 +51,9 @@ class AppState:
         self.engines: dict[str, SimulationEngine] = {}
         self.primary_udid: str | None = None
         self.cooldown = CooldownTimer()
+        self.route_service = RouteService()
         self._follower_tasks: dict[str, asyncio.Task] = {}
+        self._cooldown_task: asyncio.Task | None = None
 
     # ── Engine creation ──────────────────────────────────────────────── #
 
@@ -63,7 +66,7 @@ class AppState:
         async def _clear_pos() -> None:
             ctx._mailbox.post(_ClearCmd())
 
-        eng = SimulationEngine(udid, _set_pos, _clear_pos)
+        eng = SimulationEngine(udid, _set_pos, _clear_pos, route_service=self.route_service)
         eng.connected = True
 
         if not self.primary_udid:
@@ -158,7 +161,9 @@ class AppState:
         secs = self.cooldown.start(from_lat, from_lng, to_lat, to_lng)
         if secs > 0:
             await broadcast("cooldown_active", self.cooldown.get_status())
-            asyncio.create_task(self._cooldown_tick())
+            if self._cooldown_task and not self._cooldown_task.done():
+                self._cooldown_task.cancel()
+            self._cooldown_task = asyncio.create_task(self._cooldown_tick())
         return secs
 
     async def _cooldown_tick(self) -> None:
@@ -173,16 +178,28 @@ class AppState:
 _app_state = AppState()
 
 
+_ALLOWED_HOSTS = {'localhost', '127.0.0.1', '[::1]'}
+
 @middleware
 async def cors_middleware(request, handler):
+    # DNS-rebinding guard: reject requests whose Host is not localhost.
+    host = request.headers.get('Host', '').split(':')[0]
+    if host and host not in _ALLOWED_HOSTS:
+        return web.Response(status=421, text='Misdirected Request')
+
+    origin = request.headers.get('Origin', '')
+    allowed_origin = origin if any(
+        origin.startswith(f'http://{h}') for h in _ALLOWED_HOSTS
+    ) else f'http://localhost:{API_PORT}'
+
     if request.method == 'OPTIONS':
         return web.Response(headers={
-            'Access-Control-Allow-Origin':  '*',
-            'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+            'Access-Control-Allow-Origin':  allowed_origin,
+            'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type',
         })
     resp = await handler(request)
-    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Origin'] = allowed_origin
     return resp
 
 
@@ -193,6 +210,10 @@ async def main():
 
     app = web.Application(middlewares=[cors_middleware])
     app["_app_state"] = _app_state
+
+    async def _on_cleanup(app):
+        await _app_state.route_service.close()
+    app.on_cleanup.append(_on_cleanup)
 
     # API routes
     app.router.add_get ('/api/devices',              route_devices)
@@ -243,7 +264,10 @@ async def main():
     _log.info(f'   http://localhost:{API_PORT}/')
     _log.info('Scanning USB devices...')
 
-    await asyncio.Event().wait()
+    try:
+        await asyncio.Event().wait()
+    finally:
+        await runner.cleanup()
 
 
 if __name__ == '__main__':
