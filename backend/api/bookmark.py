@@ -20,13 +20,19 @@ async def route_add(request: web.Request) -> web.Response:
 
 
 async def route_delete(request: web.Request) -> web.Response:
-    bk_id = int(request.match_info["id"])
+    try:
+        bk_id = int(request.match_info["id"])
+    except (ValueError, KeyError):
+        return web.json_response({"ok": False, "error": "invalid id"}, status=400)
     ok = await bookmark_service.delete_bookmark(bk_id)
     return web.json_response({"ok": ok})
 
 
 async def route_rename(request: web.Request) -> web.Response:
-    bk_id = int(request.match_info["id"])
+    try:
+        bk_id = int(request.match_info["id"])
+    except (ValueError, KeyError):
+        return web.json_response({"ok": False, "error": "invalid id"}, status=400)
     try:
         body = await request.json()
         name = body["name"]
@@ -47,9 +53,8 @@ async def route_migrate(request: web.Request) -> web.Response:
 
 
 async def route_goldditto_start(request: web.Request) -> web.Response:
-    from backend.core.device_manager import get_devices
     idx = int(request.match_info.get('idx', -1))
-    devices = get_devices()
+    devices = request.app['device_manager'].devices
     udids = list(devices.keys())
     if idx < 0 or idx >= len(udids):
         return web.json_response({'ok': False, 'error': 'device not found'}, status=404)

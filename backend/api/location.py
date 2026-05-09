@@ -1,11 +1,11 @@
 import asyncio
 from aiohttp import web
-from backend.core.device_manager import get_devices
-
-
 def _get_engine(request):
-    idx = int(request.match_info.get('idx', -1))
-    devices = get_devices()
+    try:
+        idx = int(request.match_info.get('idx', -1))
+    except (ValueError, TypeError):
+        return None, None
+    devices = request.app['device_manager'].devices
     udids = list(devices.keys())
     if idx < 0 or idx >= len(udids):
         return None, None
@@ -17,7 +17,7 @@ def _get_engine(request):
 
 
 async def route_devices(request):
-    devices = get_devices()
+    devices = request.app['device_manager'].devices
     state = request.app.get("_app_state")
     result = []
     for ctx in devices.values():

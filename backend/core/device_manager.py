@@ -7,28 +7,6 @@ from backend.config import (
 
 log = logging.getLogger("device_manager")
 
-# Callback invoked when a device is fully connected (tunnel up).
-# Signature: async (ctx: DeviceCtx) -> None
-_on_device_ready: Callable[["DeviceCtx"], Awaitable[None]] | None = None
-
-
-def register_device_ready_callback(fn: Callable[["DeviceCtx"], Awaitable[None]]) -> None:
-    global _on_device_ready
-    _on_device_ready = fn
-
-
-# Callback invoked when a device is removed.
-_on_device_removed: Callable[[str], Awaitable[None]] | None = None
-
-
-def register_device_removed_callback(fn: Callable[[str], Awaitable[None]]) -> None:
-    global _on_device_removed
-    _on_device_removed = fn
-
-
-def get_devices() -> dict[str, "DeviceCtx"]:
-    return _devices
-
 _ANSI = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 def strip_ansi(s: str) -> str:
@@ -87,10 +65,6 @@ class DeviceCtx:
             'uptime_sec': int(time.time() - self._start_t),
             'tunnel_ok':  self.rsd_host is not None,
         }
-
-
-# ── Global device registry ────────────────────────────────────────────
-_devices: dict[str, DeviceCtx] = {}
 
 
 # ── USB device scan (3 fallback methods) ─────────────────────────────
@@ -377,49 +351,59 @@ async def _gps_worker_legacy(ctx: DeviceCtx):
             await asyncio.sleep(5)
 
 
-# ── Device scanner ────────────────────────────────────────────────────
-async def device_scanner():
-    idx_counter = 0
-    while True:
-        found       = await scan_usb_devices()
-        found_udids = {d['udid'] for d in found}
+# ── Device manager ────────────────────────────────────────────────────
+class DeviceManager:
+    """Encapsulates the device registry and lifecycle callbacks."""
 
-        for udid in list(_devices.keys()):
-            if udid not in found_udids:
-                ctx = _devices.pop(udid)
-                log.info(f'Device removed: {ctx.name}')
-                asyncio.create_task(terminate_tunnel(ctx))
-                if _on_device_removed:
-                    asyncio.create_task(_on_device_removed(udid))
+    def __init__(
+        self,
+        on_ready: Callable[["DeviceCtx"], Awaitable[None]] | None = None,
+        on_removed: Callable[[str], Awaitable[None]] | None = None,
+    ):
+        self.devices: dict[str, DeviceCtx] = {}
+        self._on_ready = on_ready
+        self._on_removed = on_removed
+        self._idx_counter = 0
 
-        for info in found:
-            udid = info['udid']
-            if udid not in _devices:
-                ctx = DeviceCtx(idx_counter, udid, info['name'], info['ios'])
-                idx_counter += 1
-                _devices[udid] = ctx
-                log.info(f'Device found: {ctx.name}  ({udid[-8:]})')
-                asyncio.create_task(setup_device(ctx))
+    async def scan_loop(self) -> None:
+        while True:
+            found       = await scan_usb_devices()
+            found_udids = {d['udid'] for d in found}
 
-        await asyncio.sleep(SCAN_SEC)
+            for udid in list(self.devices.keys()):
+                if udid not in found_udids:
+                    ctx = self.devices.pop(udid)
+                    log.info(f'Device removed: {ctx.name}')
+                    asyncio.create_task(terminate_tunnel(ctx))
+                    if self._on_removed:
+                        asyncio.create_task(self._on_removed(udid))
 
+            for info in found:
+                udid = info['udid']
+                if udid not in self.devices:
+                    ctx = DeviceCtx(self._idx_counter, udid, info['name'], info['ios'])
+                    self._idx_counter += 1
+                    self.devices[udid] = ctx
+                    log.info(f'Device found: {ctx.name}  ({udid[-8:]})')
+                    asyncio.create_task(self.setup_device(ctx))
 
-async def setup_device(ctx: DeviceCtx):
-    await asyncio.sleep(DEVICE_BOOT_WAIT)
+            await asyncio.sleep(SCAN_SEC)
 
-    if _is_ios16(ctx.ios):
-        # iOS 16 uses direct LockdownClient — no tunnel needed
-        log.info(f'[{ctx.name}] iOS 16 detected, skipping tunnel')
-        ctx.state['connected'] = True
-        asyncio.create_task(gps_worker(ctx))
-        if _on_device_ready:
-            await _on_device_ready(ctx)
-        return
+    async def setup_device(self, ctx: DeviceCtx) -> None:
+        await asyncio.sleep(DEVICE_BOOT_WAIT)
 
-    ok = await start_tunnel_with_retry(ctx)
-    if ok:
-        asyncio.create_task(gps_worker(ctx))
-        if _on_device_ready:
-            await _on_device_ready(ctx)
-    else:
-        ctx.state['error'] = 'Tunnel failed'
+        if _is_ios16(ctx.ios):
+            log.info(f'[{ctx.name}] iOS 16 detected, skipping tunnel')
+            ctx.state['connected'] = True
+            asyncio.create_task(gps_worker(ctx))
+            if self._on_ready:
+                await self._on_ready(ctx)
+            return
+
+        ok = await start_tunnel_with_retry(ctx)
+        if ok:
+            asyncio.create_task(gps_worker(ctx))
+            if self._on_ready:
+                await self._on_ready(ctx)
+        else:
+            ctx.state['error'] = 'Tunnel failed'

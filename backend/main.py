@@ -5,11 +5,7 @@ from aiohttp import web
 from aiohttp.web_middlewares import middleware
 
 from backend.config import API_HOST, API_PORT
-from backend.core.device_manager import (
-    device_scanner, get_devices,
-    register_device_ready_callback, register_device_removed_callback,
-    _SetCmd, _ClearCmd,
-)
+from backend.core.device_manager import DeviceManager, _SetCmd, _ClearCmd
 from backend.core.simulation_engine import SimulationEngine
 from backend.services.cooldown import CooldownTimer
 from backend.api.location import (
@@ -204,12 +200,15 @@ async def cors_middleware(request, handler):
 
 
 async def main():
-    register_device_ready_callback(_app_state.create_engine_for_device)
-    register_device_removed_callback(_app_state.on_device_removed)
-    asyncio.create_task(device_scanner())
+    _dm = DeviceManager(
+        on_ready=_app_state.create_engine_for_device,
+        on_removed=_app_state.on_device_removed,
+    )
 
     app = web.Application(middlewares=[cors_middleware])
     app["_app_state"] = _app_state
+    app["device_manager"] = _dm
+    asyncio.create_task(_dm.scan_loop())
 
     async def _on_cleanup(app):
         await _app_state.route_service.close()
