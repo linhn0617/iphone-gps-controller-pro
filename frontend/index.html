@@ -62,6 +62,7 @@
     <div class="mode-tab" id="tab-walk"            onclick="setMode('walk')">漫步</div>
     <div class="mode-tab" id="tab-multistop"       onclick="setMode('multistop')">多點</div>
     <div class="mode-tab" id="tab-loop"            onclick="setMode('loop')">循環</div>
+    <div class="mode-tab" id="tab-pokemon"         onclick="setMode('pokemon')">Pogo</div>
     <div class="mode-tab" id="tab-fav"             onclick="setMode('fav')">⭐</div>
   </div>
 
@@ -305,6 +306,41 @@
     <div style="font-size:11px;color:var(--muted);margin-top:4px">完成圈數: <span id="loop-lap-count">0</span></div>
   </div><!-- end panel-loop -->
 
+  <!-- ── POKEMON PANEL ── -->
+  <div class="panel hidden" id="panel-pokemon">
+    <div class="sec-hdr" style="margin-bottom:8px">Pokemon GO 工具</div>
+
+    <div style="background:var(--surface-2);border-radius:8px;padding:10px;margin-bottom:10px">
+      <div style="font-weight:600;margin-bottom:6px;color:var(--primary)">GoldDitto 循環</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">在目前位置附近觸發 Ditto 出現，自動跑一圈 S2 邊界點</div>
+      <div class="field-row">
+        <label style="color:var(--muted);font-size:12px;white-space:nowrap">停留秒</label>
+        <input type="number" id="ditto-dwell" value="2" min="1" max="30" style="width:70px;text-align:center">
+      </div>
+      <div class="field-row">
+        <label style="color:var(--muted);font-size:12px;white-space:nowrap">重複次數</label>
+        <input type="number" id="ditto-repeat" value="1" min="1" max="10" style="width:70px;text-align:center">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" style="flex:1" onclick="startGoldDitto()">▶ 開始循環</button>
+        <button class="btn btn-ghost" onclick="stopCurrentMode()">■ 停止</button>
+      </div>
+    </div>
+
+    <div style="background:var(--surface-2);border-radius:8px;padding:10px">
+      <div style="font-weight:600;margin-bottom:6px;color:var(--primary)">S2 網格疊圖</div>
+      <div class="field-row">
+        <label style="color:var(--muted);font-size:12px">顯示 L17（紅）</label>
+        <input type="checkbox" id="s2-l17" onchange="toggleS2Grid()" checked>
+      </div>
+      <div class="field-row">
+        <label style="color:var(--muted);font-size:12px">顯示 L14（黃）</label>
+        <input type="checkbox" id="s2-l14" onchange="toggleS2Grid()">
+      </div>
+      <div style="font-size:11px;color:var(--muted)">縮放 ≥ 15 才顯示 L17，縮放 ≥ 13 才顯示 L14</div>
+    </div>
+  </div><!-- end panel-pokemon -->
+
   <!-- ── FAVORITES PANEL ── -->
   <div class="panel hidden" id="panel-fav">
     <div class="btn-row">
@@ -350,6 +386,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/s2-geometry@1.2.10/lib/s2geometry.min.js" onerror="window.S2=null"></script>
 <script>
 // ── Settings ──────────────────────────────────────────────────────────
 const META    = '';          // 相對路徑，由 aiohttp 同源提供
@@ -474,6 +511,7 @@ function initMap() {
   L.control.zoom({ position: 'topright' }).addTo(map);
   map.on('click', onMapClick);
   map.on('contextmenu', onMapRightClick);
+  map.on('zoomend moveend', drawS2Grid);
   map.on('mousemove', e => {
     document.getElementById('coord-hud').textContent =
       `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`;
@@ -553,7 +591,7 @@ function onMapClick(e) {
 }
 
 // ── Mode Toggle ────────────────────────────────────────────────────────
-const ALL_MODES = ['normal','cruise','joystick','walk','multistop','loop','fav'];
+const ALL_MODES = ['normal','cruise','joystick','walk','multistop','loop','pokemon','fav'];
 function setMode(m) {
   state.mode = m;
   ALL_MODES.forEach(k => {
@@ -565,7 +603,8 @@ function setMode(m) {
   const badges = {
     normal:'📍 一般模式', cruise:'🗺 巡航模式',
     joystick:'🕹 搖桿模式', walk:'🚶 隨機漫步',
-    multistop:'📌 多點導航', loop:'🔁 路線循環', fav:'⭐ 我的最愛',
+    multistop:'📌 多點導航', loop:'🔁 路線循環',
+    pokemon:'🎮 Pokemon GO', fav:'⭐ 我的最愛',
   };
   document.getElementById('mode-badge').textContent = badges[m] || '';
   document.getElementById('map-hint').classList.toggle('hidden', m !== 'cruise');
@@ -1034,44 +1073,16 @@ function clearSearchResults() {
   if (_searchMarker) { map.removeLayer(_searchMarker); _searchMarker = null; }
 }
 
-// ── Favorites (localStorage, migrated to backend in Phase 5) ──────────
-const FAV_KEY = 'gps_favorites_v1';
+// ── Favorites (backend-persisted) ─────────────────────────────────────
 let _favs = [];
 
-function loadFavorites() {
-  try { _favs = JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch(e) { _favs = []; }
-  document.getElementById('fav-count').textContent = _favs.length;
-}
-function saveFavorites() {
-  localStorage.setItem(FAV_KEY, JSON.stringify(_favs));
-  document.getElementById('fav-count').textContent = _favs.length;
-}
-
 function addFavorite(lat, lon, name, country) {
-  if (_favs.some(f => Math.abs(f.lat - lat) < 0.00001 && Math.abs(f.lon - lon) < 0.00001)) {
-    showToast('此座標已在最愛中', 'err'); return;
-  }
-  _favs.push({ id: Date.now(), name: (name || `${lat.toFixed(5)},${lon.toFixed(5)}`).trim(), lat, lon, country: country || '' });
-  saveFavorites(); if (state.mode === 'fav') renderFavorites();
-}
-
-function addCurrentToFav() {
-  if (state.lat == null) { showToast('尚無座標', 'err'); return; }
-  const name = prompt('請輸入地標名稱', `地標 ${_favs.length + 1}`);
-  if (name === null) return;
-  addFavorite(state.lat, state.lon, name, '');
-  showToast(`⭐ "${name}" 已加入最愛`, 'ok');
-}
-function deleteFavorite(id) { _favs = _favs.filter(f => f.id !== id); saveFavorites(); renderFavorites(); }
-function renameFavorite(id) {
-  const f = _favs.find(f => f.id === id); if (!f) return;
-  const name = prompt('輸入新名稱', f.name); if (!name || !name.trim()) return;
-  f.name = name.trim(); saveFavorites(); renderFavorites();
-}
-function clearAllFavs() {
-  if (!_favs.length) return;
-  if (!confirm(`確定清除全部 ${_favs.length} 個最愛地點？`)) return;
-  _favs = []; saveFavorites(); renderFavorites();
+  fetch(`${META}/api/bookmarks`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name || `${lat.toFixed(5)},${lon.toFixed(5)}`, lat, lng: lon }),
+  }).then(r => r.json()).then(r => {
+    if (r.ok) { showToast(`⭐ ${name || '已儲存'}`, 'ok'); fetchAndRenderFavs(); }
+  }).catch(() => {});
 }
 
 function renderFavorites() {
@@ -1112,6 +1123,113 @@ function renderFavorites() {
       const el2 = document.getElementById(`ft-${f.id}`); if (!el2 || !info) return;
       el2.innerHTML = `${info.localTime}${info.crossDay ? ' <span class="sr-cd">跨日</span>' : ''}`;
     });
+  });
+}
+
+// ── Backend bookmarks (replaces localStorage favs) ────────────────────
+const _BK_MIGRATED_KEY = '__bookmarks_migrated_v1';
+async function loadFavorites() {
+  // One-time migration from localStorage
+  if (!localStorage.getItem(_BK_MIGRATED_KEY)) {
+    const local = JSON.parse(localStorage.getItem('gps-favorites') || '[]');
+    if (local.length) {
+      await fetch(`${META}/api/bookmarks/migrate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(local),
+      }).catch(() => {});
+      localStorage.setItem(_BK_MIGRATED_KEY, '1');
+    }
+  }
+  await fetchAndRenderFavs();
+}
+async function fetchAndRenderFavs() {
+  try {
+    const data = await fetch(`${META}/api/bookmarks`).then(r => r.json());
+    _favs = data.map(b => ({ id: b.id, name: b.name, lat: b.lat, lon: b.lng ?? b.lat }));
+    _favs = data.map(b => ({
+      id: b.id, name: b.name,
+      lat: b.lat, lon: b.lng !== undefined ? b.lng : b.lon,
+    }));
+    document.getElementById('fav-count').textContent = _favs.length;
+    if (state.mode === 'fav') renderFavorites();
+  } catch(e) { /* offline */ }
+}
+async function addCurrentToFav() {
+  if (!state.lat) { showToast('請先設定一個位置', 'err'); return; }
+  const name = prompt('地點名稱：', `地點 ${_favs.length + 1}`);
+  if (!name) return;
+  await fetch(`${META}/api/bookmarks`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, lat: state.lat, lng: state.lon }),
+  }).then(r => r.json()).then(r => {
+    if (r.ok) { showToast(`⭐ ${name} 已儲存`, 'ok'); fetchAndRenderFavs(); }
+    else showToast(r.error, 'err');
+  }).catch(() => showToast('無法連線 Backend', 'err'));
+}
+async function deleteFavorite(id) {
+  await fetch(`${META}/api/bookmarks/${id}`, { method: 'DELETE' });
+  fetchAndRenderFavs();
+}
+async function renameFavorite(id) {
+  const f = _favs.find(f => f.id === id); if (!f) return;
+  const name = prompt('新名稱：', f.name); if (!name) return;
+  await fetch(`${META}/api/bookmarks/${id}/rename`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  }).then(() => fetchAndRenderFavs());
+}
+async function clearAllFavs() {
+  if (!confirm('確定要清除所有最愛？')) return;
+  for (const f of _favs) await fetch(`${META}/api/bookmarks/${f.id}`, { method: 'DELETE' });
+  fetchAndRenderFavs();
+}
+
+// ── GoldDitto ─────────────────────────────────────────────────────────
+function startGoldDitto() {
+  if (state.deviceIdx === null) { showToast('請先選擇裝置', 'err'); return; }
+  if (!state.lat) { showToast('請先設定一個位置', 'err'); return; }
+  const dwell = parseFloat(document.getElementById('ditto-dwell').value) || 2;
+  const repeat = parseInt(document.getElementById('ditto-repeat').value) || 1;
+  fetch(`${META}/api/device/${state.deviceIdx}/goldditto/start`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ center_lat: state.lat, center_lng: state.lon, dwell_sec: dwell, repeat }),
+  }).then(r => r.json()).then(r => {
+    if (r.ok) showToast('GoldDitto 循環已開始', 'ok');
+    else showToast(r.error || '失敗', 'err');
+  }).catch(() => showToast('無法連線 Backend', 'err'));
+}
+
+// ── S2 Grid overlay ───────────────────────────────────────────────────
+const _s2Layers = { l17: [], l14: [] };
+function toggleS2Grid() {
+  _s2Layers.l17.forEach(l => map.removeLayer(l)); _s2Layers.l17 = [];
+  _s2Layers.l14.forEach(l => map.removeLayer(l)); _s2Layers.l14 = [];
+  drawS2Grid();
+}
+function drawS2Grid() {
+  if (typeof S2 === 'undefined' || !S2) return;
+  const zoom = map.getZoom();
+  const showL17 = zoom >= 15 && document.getElementById('s2-l17')?.checked;
+  const showL14 = zoom >= 13 && document.getElementById('s2-l14')?.checked;
+  if (!showL17 && !showL14) return;
+  const bounds = map.getBounds();
+  try {
+    if (showL17) _drawS2Level(17, bounds, '#e05252', _s2Layers.l17);
+    if (showL14) _drawS2Level(14, bounds, '#e0b552', _s2Layers.l14);
+  } catch(e) { /* S2 not available */ }
+}
+function _drawS2Level(level, bounds, color, layerArr) {
+  const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
+  const covering = S2.S2RegionCoverer.getCoveringTokens(
+    { lat: sw.lat, lng: sw.lng }, { lat: ne.lat, lng: ne.lng }, { min: level, max: level }
+  );
+  covering.forEach(token => {
+    try {
+      const cell = S2.S2Cell.fromHilbertQuadKey(token);
+      const corners = [0,1,2,3].map(i => { const v = cell.getVertex(i); return [v.lat, v.lng]; });
+      const poly = L.polygon(corners, { color, weight: 1, fill: false, opacity: 0.6 }).addTo(map);
+      layerArr.push(poly);
+    } catch(e) {}
   });
 }
 
@@ -1244,10 +1362,12 @@ function startRouteLoop() {
 const _origHandleWS = handleWSMessage;
 // Already handled in handleWSMessage; add lap_complete / stop_reached
 const _wsExtHandlers = {
-  lap_complete: d => { showToast(`第 ${d.lap} 圈完成`, 'ok'); document.getElementById('loop-lap-count') && (document.getElementById('loop-lap-count').textContent = d.lap); },
+  lap_complete: d => { showToast(`第 ${d.lap} 圈完成`, 'ok'); const el = document.getElementById('loop-lap-count'); if (el) el.textContent = d.lap; },
   stop_reached: d => showToast(`抵達第 ${d.stop_idx + 1} 站`, 'ok'),
   navigation_complete: d => { showToast('導航完成', 'ok'); if (routeLine) { map.removeLayer(routeLine); routeLine = null; } },
   multi_stop_complete: () => showToast('多點導航完成', 'ok'),
+  goldditto_complete: () => showToast('GoldDitto 循環完成', 'ok'),
+  leadership_change: d => { showToast(`新 Leader: ${d.udid?.slice(-4)}`, 'ok'); refreshDevices(); },
 };
 // Augment WS handler
 const _base_onmessage_ref = { fn: null };
