@@ -1,7 +1,10 @@
 import sys
 from pathlib import Path
 
-META_PORT        = int(sys.argv[1]) if len(sys.argv) > 1 else 8090
+try:
+    META_PORT = int(sys.argv[1])
+except (IndexError, ValueError):
+    META_PORT = 8090
 SCAN_SEC         = 6
 TUNNEL_TIMEOUT   = 40
 TUNNEL_RETRIES   = 3
