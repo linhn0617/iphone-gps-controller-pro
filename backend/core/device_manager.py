@@ -17,6 +17,15 @@ def register_device_ready_callback(fn: Callable[["DeviceCtx"], Awaitable[None]])
     _on_device_ready = fn
 
 
+# Callback invoked when a device is removed.
+_on_device_removed: Callable[[str], Awaitable[None]] | None = None
+
+
+def register_device_removed_callback(fn: Callable[[str], Awaitable[None]]) -> None:
+    global _on_device_removed
+    _on_device_removed = fn
+
+
 def get_devices() -> dict[str, "DeviceCtx"]:
     return _devices
 
@@ -241,7 +250,36 @@ async def _drain(stream):
 
 
 # ── GPS worker ────────────────────────────────────────────────────────
+def _is_ios16(ios_str: str) -> bool:
+    try:
+        major = int(ios_str.split('.')[0])
+        return major == 16
+    except Exception:
+        return False
+
+
+def _is_ios_supported(ios_str: str) -> bool:
+    try:
+        major = int(ios_str.split('.')[0])
+        return major >= 16
+    except Exception:
+        return True  # unknown — try anyway
+
+
 async def gps_worker(ctx: DeviceCtx):
+    if not _is_ios_supported(ctx.ios):
+        ctx.state['error'] = f'iOS {ctx.ios} not supported (min iOS 16)'
+        log.error(f'[{ctx.name}] iOS {ctx.ios} not supported')
+        return
+
+    if _is_ios16(ctx.ios):
+        await _gps_worker_legacy(ctx)
+    else:
+        await _gps_worker_dvt(ctx)
+
+
+async def _gps_worker_dvt(ctx: DeviceCtx):
+    """iOS 17+ path via DVT LocationSimulation."""
     from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscoveryService
     from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
     from pymobiledevice3.services.dvt.instruments.location_simulation import LocationSimulation
@@ -253,13 +291,13 @@ async def gps_worker(ctx: DeviceCtx):
             await asyncio.sleep(2)
             continue
         try:
-            log.info(f'[{ctx.name}] Connecting GPS...')
+            log.info(f'[{ctx.name}] Connecting GPS (DVT)...')
             async with RemoteServiceDiscoveryService((ctx.rsd_host, ctx.rsd_port)) as rsd:
                 async with DvtProvider(rsd) as dvt:
                     async with LocationSimulation(dvt) as loc:
                         ctx.state['connected'] = True
                         ctx.state['error']     = None
-                        log.info(f'[{ctx.name}] GPS connected')
+                        log.info(f'[{ctx.name}] GPS connected (DVT)')
 
                         if last_target:
                             await loc.set(last_target.lat, last_target.lon)
@@ -288,6 +326,62 @@ async def gps_worker(ctx: DeviceCtx):
             await asyncio.sleep(5)
 
 
+async def _gps_worker_legacy(ctx: DeviceCtx):
+    """iOS 16 path via DtSimulateLocation (no tunnel needed)."""
+    last_target = None
+
+    while True:
+        try:
+            log.info(f'[{ctx.name}] Connecting GPS (legacy iOS 16)...')
+            from pymobiledevice3.lockdown import create_using_usbmux
+            from pymobiledevice3.services.dt_simulate_location import DtSimulateLocation
+
+            ld = create_using_usbmux(serial=ctx.udid)
+            if hasattr(ld, '__aenter__'):
+                async with ld as lockdown:
+                    sim = DtSimulateLocation(lockdown)
+                    ctx.state['connected'] = True
+                    ctx.state['error']     = None
+                    log.info(f'[{ctx.name}] GPS connected (legacy)')
+                    if last_target:
+                        sim.set(last_target.lat, last_target.lon)
+                    while True:
+                        cmd = await ctx._mailbox.wait()
+                        if isinstance(cmd, _ClearCmd):
+                            sim.clear()
+                            last_target = None
+                            ctx.state.update(simulating=False, last_lat=None, last_lon=None)
+                        elif isinstance(cmd, _SetCmd):
+                            sim.set(cmd.lat, cmd.lon)
+                            last_target = cmd
+                            ctx.state.update(simulating=True, last_lat=cmd.lat, last_lon=cmd.lon)
+                            ctx.state['set_count'] += 1
+            else:
+                sim = DtSimulateLocation(ld)
+                ctx.state['connected'] = True
+                ctx.state['error']     = None
+                log.info(f'[{ctx.name}] GPS connected (legacy)')
+                if last_target:
+                    sim.set(last_target.lat, last_target.lon)
+                while True:
+                    cmd = await ctx._mailbox.wait()
+                    if isinstance(cmd, _ClearCmd):
+                        sim.clear()
+                        last_target = None
+                        ctx.state.update(simulating=False, last_lat=None, last_lon=None)
+                    elif isinstance(cmd, _SetCmd):
+                        sim.set(cmd.lat, cmd.lon)
+                        last_target = cmd
+                        ctx.state.update(simulating=True, last_lat=cmd.lat, last_lon=cmd.lon)
+                        ctx.state['set_count'] += 1
+        except Exception as e:
+            ctx.state['connected']  = False
+            ctx.state['simulating'] = False
+            ctx.state['error']      = str(e)
+            log.error(f'[{ctx.name}] GPS disconnected (legacy): {e}, retrying in 5s...')
+            await asyncio.sleep(5)
+
+
 # ── Device scanner ────────────────────────────────────────────────────
 async def device_scanner():
     idx_counter = 0
@@ -300,6 +394,8 @@ async def device_scanner():
                 ctx = _devices.pop(udid)
                 log.info(f'Device removed: {ctx.name}')
                 asyncio.create_task(terminate_tunnel(ctx))
+                if _on_device_removed:
+                    asyncio.create_task(_on_device_removed(udid))
 
         for info in found:
             udid = info['udid']
@@ -315,6 +411,16 @@ async def device_scanner():
 
 async def setup_device(ctx: DeviceCtx):
     await asyncio.sleep(DEVICE_BOOT_WAIT)
+
+    if _is_ios16(ctx.ios):
+        # iOS 16 uses direct LockdownClient — no tunnel needed
+        log.info(f'[{ctx.name}] iOS 16 detected, skipping tunnel')
+        ctx.state['connected'] = True
+        asyncio.create_task(gps_worker(ctx))
+        if _on_device_ready:
+            await _on_device_ready(ctx)
+        return
+
     ok = await start_tunnel_with_retry(ctx)
     if ok:
         asyncio.create_task(gps_worker(ctx))

@@ -444,13 +444,26 @@ function drawRoutePath(coords) {
   }).addTo(map);
 }
 
+let _cdInterval = null, _cdEnd = 0;
 function showCooldownBanner(sec) {
   const el = document.getElementById('cooldown-banner');
-  el.textContent = `冷卻中 ${Math.ceil(sec / 60)} 分鐘`;
+  _cdEnd = Date.now() + sec * 1000;
   el.style.display = 'block';
+  if (_cdInterval) clearInterval(_cdInterval);
+  _cdInterval = setInterval(() => {
+    const rem = (_cdEnd - Date.now()) / 1000;
+    if (rem <= 0) { hideCooldownBanner(); return; }
+    const m = Math.floor(rem / 60), s = Math.floor(rem % 60);
+    el.textContent = `冷卻中 ${m > 0 ? m + 'm ' : ''}${s}s — 請勿傳送`;
+  }, 1000);
+  const rem = sec;
+  const m = Math.floor(rem / 60), s = Math.floor(rem % 60);
+  el.textContent = `冷卻中 ${m > 0 ? m + 'm ' : ''}${Math.floor(s)}s — 請勿傳送`;
 }
 function hideCooldownBanner() {
-  document.getElementById('cooldown-banner').style.display = 'none';
+  if (_cdInterval) { clearInterval(_cdInterval); _cdInterval = null; }
+  const el = document.getElementById('cooldown-banner');
+  el.style.display = 'none';
 }
 
 function initMap() {
@@ -590,15 +603,27 @@ function renderDeviceList(devs) {
       : (d.tunnel_ok ? 'GPS 連線中...' : '建立 Tunnel...');
     const sel = state.deviceIdx === d.idx ? 'selected' : '';
     const leaderBadge = d.is_primary ? ' 👑' : '';
+    const stateLabel = d.state ? ` · ${d.state}` : '';
     return `<div class="device-card ${sel}" onclick="selectDevice(${d.idx})">
       <div class="dc-dot ${dotCls}"></div>
       <div class="dc-info">
         <div class="dc-name">${d.name}${leaderBadge}</div>
-        <div class="dc-sub">${sub}</div>
+        <div class="dc-sub">${sub}${stateLabel}</div>
       </div>
-      ${state.deviceIdx === d.idx ? '<div class="dc-badge">使用中</div>' : ''}
+      <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">
+        ${state.deviceIdx === d.idx ? '<div class="dc-badge">使用中</div>' : ''}
+        <button class="btn btn-ghost" style="padding:2px 7px;font-size:10px" onclick="event.stopPropagation();toggleWifi(${d.idx})" title="切換 WiFi Tunnel">📶 WiFi</button>
+      </div>
     </div>`;
   }).join('');
+}
+
+function toggleWifi(idx) {
+  fetch(`${META}/api/device/${idx}/wifi-tunnel`, { method: 'POST' })
+    .then(r => r.json()).then(r => {
+      if (r.ok) showToast('WiFi Tunnel 已啟動', 'ok');
+      else showToast(r.error || 'WiFi 失敗', 'err');
+    }).catch(() => showToast('無法連線 Backend', 'err'));
 }
 
 function selectDevice(idx, showToastMsg = true) {
@@ -668,6 +693,11 @@ function gotoCoord(lat, lon, silent = false) {
       body: JSON.stringify({ lat, lon })
     }).then(r => r.json()).then(r => {
       if (r.ok) showToast(`${lat.toFixed(5)}, ${lon.toFixed(5)}`, 'ok');
+      else if (r.cooldown) {
+        const mins = Math.ceil(r.remaining_sec / 60);
+        showToast(`冷卻中 ${mins} 分鐘，請稍後`, 'err');
+        showCooldownBanner(r.remaining_sec);
+      }
       else showToast(r.error || '設定失敗', 'err');
     }).catch(() => showToast('無法連線 Backend', 'err'));
   }

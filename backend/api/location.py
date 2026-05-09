@@ -46,6 +46,18 @@ async def route_set(request):
     except Exception as e:
         return web.json_response({'ok': False, 'error': str(e)}, status=400)
 
+    app_state = request.app.get("_app_state")
+    if app_state:
+        cd = app_state.check_cooldown()
+        if cd:
+            return web.json_response({
+                'ok': False, 'cooldown': True,
+                'remaining_sec': cd['remaining_sec'],
+                'error': f'冷卻中 {int(cd["remaining_sec"])} 秒',
+            }, status=429)
+        if eng and eng.position:
+            asyncio.create_task(app_state.start_cooldown(eng.position.lat, eng.position.lng, lat, lon))
+
     if eng:
         await eng.teleport(lat, lon)
     else:
@@ -211,3 +223,10 @@ async def route_device_status(request):
             d["last_lat"] = pos.lat
             d["last_lon"] = pos.lng
     return web.json_response(d)
+
+
+async def route_cooldown_status(request):
+    app_state = request.app.get("_app_state")
+    if not app_state:
+        return web.json_response({"active": False})
+    return web.json_response(app_state.cooldown.get_status())
