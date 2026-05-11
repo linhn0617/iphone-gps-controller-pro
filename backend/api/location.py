@@ -230,3 +230,32 @@ async def route_cooldown_status(request):
     if not app_state:
         return web.json_response({"active": False})
     return web.json_response(app_state.cooldown.get_status())
+
+
+async def route_goldenbowl_cycle(request):
+    """Pikmin Bloom gold bowl: push GPS to A, immediately restore real GPS.
+
+    Mirrors locwarp's GoldDittoHandler.cycle() — the game freezes the
+    GPS check in its animation window, so we only need to briefly touch A
+    then hand off cleanly back to real GPS.
+    """
+    ctx, eng = _get_engine(request)
+    if not ctx:
+        return web.json_response({'ok': False, 'error': 'device not found'}, status=404)
+    if not ctx.state['connected']:
+        return web.json_response({'ok': False, 'error': 'GPS not connected'}, status=503)
+    if not eng:
+        return web.json_response({'ok': False, 'error': 'engine not ready'}, status=503)
+    try:
+        data = await request.json()
+        lat = float(data['lat'])
+        lon = float(data['lon'])
+    except Exception as e:
+        return web.json_response({'ok': False, 'error': str(e)}, status=400)
+
+    await eng.stop()
+    await eng._set_position(lat, lon)  # briefly touch A
+    await eng._clear_pos_fn()          # immediately restore real GPS
+    eng.position = None
+    await eng._emit('goldditto_cycle', {'phase': 'restored', 'udid': eng.udid})
+    return web.json_response({'ok': True})

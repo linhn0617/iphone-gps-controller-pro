@@ -33,10 +33,10 @@ async def start_wifi_tunnel(udid: str) -> tuple[str, int] | None:
     import re
     from backend.core.device_manager import strip_ansi, TUNNEL_TIMEOUT
 
-    deadline = asyncio.get_event_loop().time() + TUNNEL_TIMEOUT
+    deadline = asyncio.get_running_loop().time() + TUNNEL_TIMEOUT
     rsd_host = rsd_port = None
 
-    while asyncio.get_event_loop().time() < deadline:
+    while asyncio.get_running_loop().time() < deadline:
         try:
             raw = await asyncio.wait_for(proc.stdout.readline(), timeout=3.0)
         except asyncio.TimeoutError:

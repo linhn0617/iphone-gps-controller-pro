@@ -7,7 +7,7 @@ from backend.services.interpolator import RouteInterpolator
 
 class CooldownTimer:
     def __init__(self):
-        self.enabled: bool = True
+        self.enabled: bool = False
         self.is_active: bool = False
         self._start_time: float = 0.0
         self._total_sec: float = 0.0

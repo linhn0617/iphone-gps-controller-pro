@@ -41,6 +41,11 @@
     <div id="device-list"><div class="no-devices">掃描中...</div></div>
   </div>
 
+  <!-- 快速飛行 Bar (顯示最近 12 個最愛) -->
+  <div id="quick-section" class="hidden">
+    <div class="quick-bar" id="quick-bar"></div>
+  </div>
+
   <!-- 地點搜尋 -->
   <div id="search-section" style="border-bottom:1px solid var(--border);flex-shrink:0">
     <div style="padding:10px 16px 0">
@@ -64,6 +69,7 @@
     <div class="mode-tab" id="tab-loop"            onclick="setMode('loop')">循環</div>
     <div class="mode-tab" id="tab-pokemon"         onclick="setMode('pokemon')">Pogo</div>
     <div class="mode-tab" id="tab-fav"             onclick="setMode('fav')">⭐</div>
+    <div class="mode-tab" id="tab-goldenbowl"      onclick="setMode('goldenbowl')" style="color:var(--warn)">金盆</div>
   </div>
 
   <!-- ── NORMAL PANEL ── -->
@@ -83,6 +89,9 @@
         <div class="coord-row"><span class="coord-label">當地時間</span><span class="coord-val" id="disp-time" style="font-size:12px">—</span></div>
         <div class="coord-row" style="margin-bottom:0"><span class="coord-label">跨日</span><span id="disp-crossday" class="coord-val">—</span></div>
       </div>
+      <button id="cc-toggle" type="button"
+        onclick="setClickConfirm(!clickConfirmEnabled())"
+        title="點地圖時是否先彈出確認 Lightbox">點擊確認: 開</button>
     </div>
 
     <!-- 裝置狀態 -->
@@ -346,6 +355,9 @@
     <div class="btn-row">
       <button class="btn btn-primary" style="flex:1" onclick="addCurrentToFav()">⭐ 加入目前位置</button>
     </div>
+    <input type="text" id="fav-search" class="fav-search"
+      placeholder="🔍 搜尋最愛名稱..." autocomplete="off"
+      oninput="renderFavorites()">
     <div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div class="sec-hdr">我的最愛 <span id="fav-count" style="color:var(--primary);font-weight:600">0</span></div>
@@ -353,8 +365,44 @@
       </div>
       <div id="fav-list"><div class="fav-empty">尚無儲存地點<br>點擊 ⭐ 或從搜尋結果加入</div></div>
     </div>
-    <div class="hint">ℹ 搜尋結果 Popup 可直接加入最愛</div>
+    <div class="hint">ℹ 搜尋結果 Popup 也可直接加入最愛</div>
   </div><!-- end panel-fav -->
+
+  <!-- ── GOLD BOWL PANEL (Pikmin Bloom) ── -->
+  <div class="panel hidden" id="panel-goldenbowl">
+    <div class="hint" style="background:rgba(232,175,52,.1);border-color:rgba(232,175,52,.35);color:var(--warn)">
+      🌸 Pikmin Bloom 金盆採集模式
+    </div>
+
+    <div>
+      <div class="sec-hdr" style="margin-bottom:8px">我的真實座標（A點）</div>
+      <div class="gold-bowl-box">
+        <div class="field-row" style="margin-bottom:8px">
+          <input type="number" id="gb-lat" placeholder="Lat" step="0.000001"
+            onchange="saveGoldBowlCoord()" oninput="saveGoldBowlCoord()">
+          <input type="number" id="gb-lon" placeholder="Lon" step="0.000001"
+            onchange="saveGoldBowlCoord()" oninput="saveGoldBowlCoord()">
+        </div>
+        <button class="btn btn-ghost" style="width:100%;font-size:11px" onclick="fillGoldBowlFromCurrent()">
+          ↙ 使用目前地圖座標填入
+        </button>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-hdr" style="margin-bottom:8px">操作步驟</div>
+      <div class="gold-bowl-steps">
+        <div class="gold-bowl-step"><div class="gold-bowl-step-num">1</div><span>在遊戲中走到金盆位置，點擊花苞</span></div>
+        <div class="gold-bowl-step"><div class="gold-bowl-step-num">2</div><span>等待出現「Swipe down on the special flower for a reward」提示</span></div>
+        <div class="gold-bowl-step"><div class="gold-bowl-step-num">3</div><span>暫停約 2 秒後，按下方按鈕</span></div>
+        <div class="gold-bowl-step"><div class="gold-bowl-step-num">4</div><span>GPS 將切換至 A 點完成互動</span></div>
+      </div>
+    </div>
+
+    <button class="gold-bowl-btn" id="gb-pull-btn" onclick="pullGoldBowl()">
+      🌸 Pull Gold Bowl
+    </button>
+  </div><!-- end panel-goldenbowl -->
 
   <!-- Launcher info -->
   <div id="tunnel-toggle" class="tunnel-toggle" onclick="toggleTunnel()">
@@ -383,6 +431,28 @@
   <div id="toast"></div>
 </div>
 
+<!-- Add-Favorite Modal -->
+<div id="fav-modal" class="modal-overlay hidden">
+  <div class="modal-backdrop" onclick="closeFavModal()"></div>
+  <div class="modal-card">
+    <div class="modal-title">⭐ 加入我的最愛</div>
+    <div class="modal-field">
+      <label>名稱</label>
+      <input type="text" id="fm-name" placeholder="地點名稱" autocomplete="off"
+        onkeydown="if(event.key==='Enter') confirmAddFav()">
+    </div>
+    <div class="modal-field">
+      <label>分類</label>
+      <div class="modal-cats" id="fm-cats"></div>
+    </div>
+    <div class="modal-coord" id="fm-coord">—</div>
+    <div class="modal-btns">
+      <button class="cb-btn cb-cancel" onclick="closeFavModal()">取消</button>
+      <button class="cb-btn cb-ok" onclick="confirmAddFav()">確認</button>
+    </div>
+  </div>
+</div>
+
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -405,6 +475,53 @@ let map, phoneMarkers = {}, pulseMarkers = {}, routeLine;
 let wpMarkers = [], wpData = [];
 let toastTimer = null;
 
+// ── Categories (Hazelwu2 + goldbowl) ───────────────────────────────────
+const CATEGORIES = {
+  'base':          { icon: '🏠',  label: '基地' },
+  'bigmush-early': { icon: '🍄⏪', label: '提前巨菇' },
+  'bigmush-late':  { icon: '🍄⏩', label: '延長巨菇' },
+  'event-mush':    { icon: '🍄🎫', label: '活動菇' },
+  'flower':        { icon: '🌸',  label: '花點' },
+  'goldbowl':      { icon: '🥇',  label: '金盆' },
+};
+const DEFAULT_CAT = 'base';
+const CAT_KEYS = Object.keys(CATEGORIES);
+
+// ── Reverse geocode (Nominatim) ────────────────────────────────────────
+const _geoCache = {};
+async function reverseGeocode(lat, lon) {
+  const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+  if (_geoCache[key] !== undefined) return _geoCache[key];
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=zh-TW,zh,en&zoom=14`;
+    const r = await fetch(url, {
+      headers: { 'User-Agent': 'iPhoneGPSControllerPro/1.0' },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!r.ok) throw new Error('http');
+    const data = await r.json();
+    const name = (data.display_name || '').split(',').slice(0, 2).join(', ').trim()
+              || `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+    _geoCache[key] = name;
+    return name;
+  } catch (e) {
+    return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  }
+}
+
+// ── Click-confirm setting (localStorage) ───────────────────────────────
+function clickConfirmEnabled() {
+  return localStorage.getItem('pikmin_clickConfirm') !== 'off';
+}
+function setClickConfirm(on) {
+  localStorage.setItem('pikmin_clickConfirm', on ? 'on' : 'off');
+  const btn = document.getElementById('cc-toggle');
+  if (btn) {
+    btn.textContent = on ? '點擊確認: 開' : '點擊確認: 關';
+    btn.classList.toggle('on', on);
+  }
+}
+
 // ── Init ───────────────────────────────────────────────────────────────
 window.onload = () => {
   initMap();
@@ -412,6 +529,7 @@ window.onload = () => {
   loadFavorites();
   connectWS();
   setInterval(pollDevices, POLL_MS);
+  setClickConfirm(clickConfirmEnabled());
 };
 
 // ── WebSocket ──────────────────────────────────────────────────────────
@@ -586,12 +704,54 @@ function getOrCreateMarkers(idx) {
 // ── Map Click ──────────────────────────────────────────────────────────
 function onMapClick(e) {
   const { lat, lng } = e.latlng;
-  if (state.mode === 'normal') gotoCoord(lat, lng);
-  else if (state.mode === 'cruise' && !state.playing) addWaypoint(lat, lng);
+  if (state.mode === 'normal') {
+    if (clickConfirmEnabled()) showConfirmLightbox(lat, lng);
+    else gotoCoord(lat, lng);
+  } else if (state.mode === 'cruise' && !state.playing) {
+    addWaypoint(lat, lng);
+  }
+}
+
+// ── Click-confirm Lightbox ─────────────────────────────────────────────
+function showConfirmLightbox(lat, lon) {
+  dismissConfirm();
+  const card = document.createElement('div');
+  card.id = 'confirm-lightbox';
+  card.innerHTML = `
+    <div class="cb-backdrop" onclick="dismissConfirm()"></div>
+    <div class="cb-card">
+      <div class="cb-row cb-name" id="cb-name">⏳ 查詢中...</div>
+      <div class="cb-row cb-coord">${lat.toFixed(5)}, ${lon.toFixed(5)}</div>
+      <div class="cb-row cb-time"><span id="cb-time">⏳ 查詢時間...</span><span id="cb-cd"></span></div>
+      <div class="cb-btns">
+        <button class="cb-btn cb-cancel" onclick="dismissConfirm()">取消</button>
+        <button class="cb-btn cb-ok" onclick="doFly(${lat},${lon})">📍 飛過去</button>
+      </div>
+    </div>`;
+  document.body.appendChild(card);
+  reverseGeocode(lat, lon).then(n => {
+    const el = document.getElementById('cb-name'); if (el) el.textContent = n;
+  });
+  if (typeof lookupTz === 'function') {
+    lookupTz(lat, lon).then(info => {
+      if (!info) return;
+      const t = document.getElementById('cb-time'); if (t) t.textContent = info.localTime || '—';
+      const cd = document.getElementById('cb-cd');
+      if (cd && info.crossDay) cd.innerHTML = ' <span class="sr-cd">跨日</span>';
+    });
+  }
+}
+function dismissConfirm() {
+  const el = document.getElementById('confirm-lightbox');
+  if (el) el.remove();
+}
+function doFly(lat, lon) {
+  dismissConfirm();
+  gotoCoord(lat, lon);
 }
 
 // ── Mode Toggle ────────────────────────────────────────────────────────
-const ALL_MODES = ['normal','cruise','joystick','walk','multistop','loop','pokemon','fav'];
+const ALL_MODES = ['normal','cruise','joystick','walk','multistop','loop','pokemon','fav','goldenbowl'];
 function setMode(m) {
   state.mode = m;
   ALL_MODES.forEach(k => {
@@ -605,6 +765,7 @@ function setMode(m) {
     joystick:'🕹 搖桿模式', walk:'🚶 隨機漫步',
     multistop:'📌 多點導航', loop:'🔁 路線循環',
     pokemon:'🎮 Pokemon GO', fav:'⭐ 我的最愛',
+    goldenbowl:'🌸 金盆模式',
   };
   document.getElementById('mode-badge').textContent = badges[m] || '';
   document.getElementById('map-hint').classList.toggle('hidden', m !== 'cruise');
@@ -1061,7 +1222,7 @@ function jumpToPlace(r) {
     const wpLink = document.getElementById('sr-wp-link');
     if (wpLink) wpLink.onclick = e => { e.preventDefault(); addWaypoint(la, lo); };
     const favLink = document.getElementById('sr-fav-link');
-    if (favLink) favLink.onclick = e => { e.preventDefault(); addFavorite(la, lo, title, country); showToast('⭐ 已加入最愛', 'ok'); };
+    if (favLink) favLink.onclick = e => { e.preventDefault(); openAddFavModal(la, lo, title); };
   });
   showToast(title, 'ok');
   document.getElementById('search-results').innerHTML = '';
@@ -1073,40 +1234,39 @@ function clearSearchResults() {
   if (_searchMarker) { map.removeLayer(_searchMarker); _searchMarker = null; }
 }
 
-// ── Favorites (backend-persisted) ─────────────────────────────────────
+// ── Favorites (backend-persisted, categorized) ────────────────────────
 let _favs = [];
 
-function addFavorite(lat, lon, name, country) {
-  fetch(`${META}/api/bookmarks`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: name || `${lat.toFixed(5)},${lon.toFixed(5)}`, lat, lng: lon }),
-  }).then(r => r.json()).then(r => {
-    if (r.ok) { showToast(`⭐ ${name || '已儲存'}`, 'ok'); fetchAndRenderFavs(); }
-  }).catch(() => {});
-}
+function _normCat(c) { return CATEGORIES[c] ? c : DEFAULT_CAT; }
 
 function renderFavorites() {
   const el = document.getElementById('fav-list');
+  const q = (document.getElementById('fav-search')?.value || '').trim().toLowerCase();
+  const list = q ? _favs.filter(f => f.name.toLowerCase().includes(q)) : _favs;
   document.getElementById('fav-count').textContent = _favs.length;
   if (!_favs.length) { el.innerHTML = '<div class="fav-empty">尚無儲存地點<br>點擊 ⭐ 或從搜尋結果加入</div>'; return; }
-  el.innerHTML = _favs.map(f => `
+  if (!list.length) { el.innerHTML = '<div class="fav-empty">無符合搜尋的最愛</div>'; return; }
+  el.innerHTML = list.map(f => {
+    const cat = _normCat(f.cat);
+    const c = CATEGORIES[cat];
+    return `
     <div class="fav-item" data-id="${f.id}">
-      <div class="fav-star">⭐</div>
+      <div class="fav-cat-badge" title="${c.label}">${c.icon}</div>
       <div class="fav-body">
         <div class="fav-name">${f.name}</div>
         <div class="fav-coords">${f.lat.toFixed(5)}, ${f.lon.toFixed(5)}</div>
         <div class="fav-meta">
-          ${f.country ? `<span class="fav-country">${f.country}</span>` : ''}
           <span class="fav-time" id="ft-${f.id}">⏳</span>
         </div>
       </div>
       <div class="fav-btns">
-        <button class="fav-btn fav-go"   data-action="go"     title="跳轉">🗺</button>
-        <button class="fav-btn fav-gps"  data-action="gps"    title="設定GPS">📍</button>
+        <button class="fav-btn fav-go"   data-action="go"     title="地圖跳轉">🗺</button>
+        <button class="fav-btn fav-gps"  data-action="gps"    title="設定 GPS">📍</button>
         <button class="fav-btn fav-edit" data-action="rename" title="重新命名">✏</button>
         <button class="fav-btn fav-del"  data-action="del"    title="刪除">🗑</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   el.onclick = e => {
     const btn = e.target.closest('[data-action]'), item = e.target.closest('.fav-item');
     if (!item) return;
@@ -1114,11 +1274,11 @@ function renderFavorites() {
     if (!btn) { map.setView([f.lat, f.lon], 16); return; }
     const act = btn.dataset.action;
     if (act === 'go')     map.setView([f.lat, f.lon], 16);
-    if (act === 'gps')    { gotoCoord(f.lat, f.lon); showToast(`📍 ${f.name}`, 'ok'); }
+    if (act === 'gps')    { if (clickConfirmEnabled()) showConfirmLightbox(f.lat, f.lon); else { gotoCoord(f.lat, f.lon); showToast(`📍 ${f.name}`, 'ok'); } }
     if (act === 'rename') renameFavorite(id);
     if (act === 'del')    deleteFavorite(id);
   };
-  _favs.forEach(f => {
+  list.forEach(f => {
     lookupTz(f.lat, f.lon).then(info => {
       const el2 = document.getElementById(`ft-${f.id}`); if (!el2 || !info) return;
       el2.innerHTML = `${info.localTime}${info.crossDay ? ' <span class="sr-cd">跨日</span>' : ''}`;
@@ -1126,10 +1286,80 @@ function renderFavorites() {
   });
 }
 
+// Quick-fly bar (top of sidebar — last 12 favorites)
+function renderQuickBar() {
+  const sec = document.getElementById('quick-section');
+  const bar = document.getElementById('quick-bar');
+  if (!bar || !sec) return;
+  if (!_favs.length) { sec.classList.add('hidden'); bar.innerHTML = ''; return; }
+  sec.classList.remove('hidden');
+  const items = _favs.slice(-12).reverse();
+  bar.innerHTML = items.map(f => {
+    const cat = _normCat(f.cat);
+    const c = CATEGORIES[cat];
+    const safeName = (f.name || '').replace(/"/g, '&quot;');
+    return `<button class="quick-chip" type="button"
+      title="${safeName} (${c.label})\n${f.lat.toFixed(5)}, ${f.lon.toFixed(5)}"
+      onclick="quickFly(${f.lat},${f.lon})"><span class="qc-icon">${c.icon}</span>${safeName}</button>`;
+  }).join('');
+}
+function quickFly(lat, lon) {
+  if (clickConfirmEnabled()) showConfirmLightbox(lat, lon);
+  else gotoCoord(lat, lon);
+}
+
+// ── Add-Favorite Modal ────────────────────────────────────────────────
+let _fmCtx = { lat: null, lon: null, cat: DEFAULT_CAT };
+
+function openAddFavModal(lat, lon, prefillName = '') {
+  if (lat == null || lon == null) { showToast('尚無座標', 'err'); return; }
+  _fmCtx = { lat, lon, cat: DEFAULT_CAT };
+  document.getElementById('fm-coord').textContent = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  const nameInput = document.getElementById('fm-name');
+  nameInput.value = prefillName || '';
+  const grid = document.getElementById('fm-cats');
+  grid.innerHTML = CAT_KEYS.map(k => `
+    <div class="modal-cat ${k === DEFAULT_CAT ? 'sel' : ''}" data-cat="${k}" onclick="selectFmCat('${k}')">
+      <span class="modal-cat-icon">${CATEGORIES[k].icon}</span>
+      <span class="modal-cat-label">${CATEGORIES[k].label}</span>
+    </div>`).join('');
+  document.getElementById('fav-modal').classList.remove('hidden');
+  if (!prefillName) {
+    reverseGeocode(lat, lon).then(n => {
+      if (!nameInput.value) nameInput.value = n;
+    });
+  }
+  setTimeout(() => nameInput.focus(), 50);
+}
+function selectFmCat(k) {
+  _fmCtx.cat = _normCat(k);
+  document.querySelectorAll('#fm-cats .modal-cat').forEach(el => {
+    el.classList.toggle('sel', el.dataset.cat === _fmCtx.cat);
+  });
+}
+function closeFavModal() {
+  document.getElementById('fav-modal').classList.add('hidden');
+}
+async function confirmAddFav() {
+  const name = document.getElementById('fm-name').value.trim();
+  if (!name) { showToast('請輸入名稱', 'err'); return; }
+  const { lat, lon, cat } = _fmCtx;
+  try {
+    const r = await fetch(`${META}/api/bookmarks`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, lat, lng: lon, category: cat }),
+    }).then(r => r.json());
+    if (r.ok) {
+      showToast(`${CATEGORIES[cat].icon} ${name}`, 'ok');
+      closeFavModal();
+      fetchAndRenderFavs();
+    } else showToast(r.error || '加入失敗', 'err');
+  } catch (e) { showToast('無法連線 Backend', 'err'); }
+}
+
 // ── Backend bookmarks (replaces localStorage favs) ────────────────────
 const _BK_MIGRATED_KEY = '__bookmarks_migrated_v1';
 async function loadFavorites() {
-  // One-time migration from localStorage
   if (!localStorage.getItem(_BK_MIGRATED_KEY)) {
     const local = JSON.parse(localStorage.getItem('gps-favorites') || '[]');
     if (local.length) {
@@ -1145,26 +1375,19 @@ async function loadFavorites() {
 async function fetchAndRenderFavs() {
   try {
     const data = await fetch(`${META}/api/bookmarks`).then(r => r.json());
-    _favs = data.map(b => ({ id: b.id, name: b.name, lat: b.lat, lon: b.lng ?? b.lat }));
     _favs = data.map(b => ({
       id: b.id, name: b.name,
       lat: b.lat, lon: b.lng !== undefined ? b.lng : b.lon,
+      cat: _normCat(b.category),
     }));
     document.getElementById('fav-count').textContent = _favs.length;
+    renderQuickBar();
     if (state.mode === 'fav') renderFavorites();
   } catch(e) { /* offline */ }
 }
 async function addCurrentToFav() {
-  if (!state.lat) { showToast('請先設定一個位置', 'err'); return; }
-  const name = prompt('地點名稱：', `地點 ${_favs.length + 1}`);
-  if (!name) return;
-  await fetch(`${META}/api/bookmarks`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, lat: state.lat, lng: state.lon }),
-  }).then(r => r.json()).then(r => {
-    if (r.ok) { showToast(`⭐ ${name} 已儲存`, 'ok'); fetchAndRenderFavs(); }
-    else showToast(r.error, 'err');
-  }).catch(() => showToast('無法連線 Backend', 'err'));
+  if (state.lat == null) { showToast('請先設定一個位置', 'err'); return; }
+  openAddFavModal(state.lat, state.lon, '');
 }
 async function deleteFavorite(id) {
   await fetch(`${META}/api/bookmarks/${id}`, { method: 'DELETE' });
@@ -1374,6 +1597,52 @@ const _base_onmessage_ref = { fn: null };
 function handleWSMessage(type, data) {
   if (_wsExtHandlers[type]) { _wsExtHandlers[type](data); return; }
   _origHandleWS(type, data);
+}
+
+// ── Gold Bowl (Pikmin Bloom) ───────────────────────────────────────────
+const _GB_KEY = 'gps_gold_bowl_v1';
+
+(function loadGoldBowlCoord() {
+  try {
+    const s = JSON.parse(localStorage.getItem(_GB_KEY) || 'null');
+    if (s) {
+      document.getElementById('gb-lat').value = s.lat;
+      document.getElementById('gb-lon').value = s.lon;
+    }
+  } catch(e) {}
+})();
+
+function saveGoldBowlCoord() {
+  const lat = parseFloat(document.getElementById('gb-lat').value);
+  const lon = parseFloat(document.getElementById('gb-lon').value);
+  if (!isNaN(lat) && !isNaN(lon))
+    localStorage.setItem(_GB_KEY, JSON.stringify({ lat, lon }));
+}
+
+function fillGoldBowlFromCurrent() {
+  if (state.lat == null) { showToast('尚無座標', 'err'); return; }
+  document.getElementById('gb-lat').value = state.lat.toFixed(6);
+  document.getElementById('gb-lon').value = state.lon.toFixed(6);
+  saveGoldBowlCoord();
+  showToast('A 點已更新', 'ok');
+}
+
+function pullGoldBowl() {
+  const lat = parseFloat(document.getElementById('gb-lat').value);
+  const lon = parseFloat(document.getElementById('gb-lon').value);
+  if (isNaN(lat) || isNaN(lon)) { showToast('請先設定 A 點座標', 'err'); return; }
+  if (state.deviceIdx === null) { showToast('請先選擇裝置', 'err'); return; }
+  const btn = document.getElementById('gb-pull-btn');
+  btn.disabled = true; btn.textContent = '⏳ 送出中...';
+  fetch(`${META}/api/device/${state.deviceIdx}/goldenbowl/cycle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lat, lon }),
+  }).then(r => r.json()).then(r => {
+    if (r.ok) showToast('🌸 Gold Bowl 已觸發！', 'ok');
+    else showToast(r.error || '設定失敗', 'err');
+  }).catch(() => showToast('無法連線 Backend', 'err'))
+    .finally(() => { btn.disabled = false; btn.textContent = '🌸 Pull Gold Bowl'; });
 }
 
 // ── Keyboard shortcuts ─────────────────────────────────────────────────

@@ -210,3 +210,4 @@ __pycache__/
 *.pyc
 .DS_Store
 .iphone-gps-controller-pro/
+.gstack/

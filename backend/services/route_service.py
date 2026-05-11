@@ -63,9 +63,22 @@ class RouteService:
             all_coords.extend(seg)
         return all_coords
 
+    @staticmethod
+    def _validate_coords(*coords: float) -> None:
+        import math
+        for c in coords:
+            if not math.isfinite(c):
+                raise ValueError(f"non-finite coordinate: {c}")
+        lat1, lon1, lat2, lon2 = coords
+        if not (-90 <= lat1 <= 90 and -90 <= lat2 <= 90):
+            raise ValueError("latitude out of range [-90, 90]")
+        if not (-180 <= lon1 <= 180 and -180 <= lon2 <= 180):
+            raise ValueError("longitude out of range [-180, 180]")
+
     async def _osrm_route(
         self, lat1: float, lon1: float, lat2: float, lon2: float, *, mode: str
     ) -> list[tuple[float, float]]:
+        self._validate_coords(lat1, lon1, lat2, lon2)
         profile = _osrm_profile(mode)
         # OSRM uses lon,lat order
         coords_str = f"{lon1},{lat1};{lon2},{lat2}"

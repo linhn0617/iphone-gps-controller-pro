@@ -13,9 +13,11 @@ async def route_add(request: web.Request) -> web.Response:
         name = body["name"]
         lat  = float(body["lat"])
         lng  = float(body.get("lng") or body.get("lon"))
+        category = body.get("category")
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
-    entry = await bookmark_service.add_bookmark(name, lat, lng)
+    kwargs = {"category": category} if category is not None else {}
+    entry = await bookmark_service.add_bookmark(name, lat, lng, **kwargs)
     return web.json_response({"ok": True, "bookmark": entry})
 
 
@@ -39,6 +41,20 @@ async def route_rename(request: web.Request) -> web.Response:
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
     ok = await bookmark_service.rename_bookmark(bk_id, name)
+    return web.json_response({"ok": ok})
+
+
+async def route_update_category(request: web.Request) -> web.Response:
+    try:
+        bk_id = int(request.match_info["id"])
+    except (ValueError, KeyError):
+        return web.json_response({"ok": False, "error": "invalid id"}, status=400)
+    try:
+        body = await request.json()
+        category = body["category"]
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+    ok = await bookmark_service.update_category(bk_id, category)
     return web.json_response({"ok": ok})
 
 

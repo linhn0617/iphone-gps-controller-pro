@@ -14,6 +14,7 @@ from backend.api.location import (
     route_joystick_start, route_random_walk_start,
     route_multi_stop_start, route_route_loop_start,
     route_cooldown_status,
+    route_goldenbowl_cycle,
 )
 from backend.api.websocket import route_ws_status, broadcast
 from backend.api.device import route_wifi_toggle
@@ -22,6 +23,7 @@ from backend.api.bookmark import (
     route_add as route_bookmark_add,
     route_delete as route_bookmark_delete,
     route_rename as route_bookmark_rename,
+    route_update_category as route_bookmark_update_category,
     route_migrate as route_bookmark_migrate,
     route_goldditto_start,
 )
@@ -233,13 +235,15 @@ async def main():
     app.router.add_get ('/api/cooldown',                             route_cooldown_status)
     app.router.add_post('/api/device/{idx}/wifi-tunnel',             route_wifi_toggle)
     app.router.add_post('/api/device/{idx}/goldditto/start',         route_goldditto_start)
+    app.router.add_post('/api/device/{idx}/goldenbowl/cycle',        route_goldenbowl_cycle)
 
     # Bookmarks
     app.router.add_get ('/api/bookmarks',             route_bookmark_list)
     app.router.add_post('/api/bookmarks',             route_bookmark_add)
     app.router.add_delete('/api/bookmarks/{id}',      route_bookmark_delete)
-    app.router.add_post('/api/bookmarks/{id}/rename', route_bookmark_rename)
-    app.router.add_post('/api/bookmarks/migrate',     route_bookmark_migrate)
+    app.router.add_post('/api/bookmarks/{id}/rename',   route_bookmark_rename)
+    app.router.add_post('/api/bookmarks/{id}/category', route_bookmark_update_category)
+    app.router.add_post('/api/bookmarks/migrate',       route_bookmark_migrate)
 
     # WebSocket
     app.router.add_get('/ws/status', route_ws_status)
