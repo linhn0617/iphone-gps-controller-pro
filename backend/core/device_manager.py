@@ -82,9 +82,18 @@ async def scan_usb_devices() -> list[dict]:
                 from pymobiledevice3.lockdown import create_using_usbmux
                 ld = create_using_usbmux(serial=udid)
                 if inspect.isawaitable(ld): ld = await ld
-                vals = ld.all_values
-                name = vals.get('DeviceName', name)
-                ios  = vals.get('ProductVersion', '?')
+                try:
+                    vals = ld.all_values
+                    name = vals.get('DeviceName', name)
+                    ios  = vals.get('ProductVersion', '?')
+                finally:
+                    closer = getattr(ld, 'close', None) or getattr(ld, 'aclose', None)
+                    if closer is not None:
+                        try:
+                            r = closer()
+                            if inspect.isawaitable(r): await r
+                        except Exception:
+                            pass
             except Exception:
                 pass
             result.append({'udid': udid, 'name': name, 'ios': ios})
@@ -338,11 +347,17 @@ async def _gps_worker_legacy(ctx: DeviceCtx):
                     log.info(f'[{ctx.name}] GPS connected (legacy)')
                     await _legacy_command_loop(ctx, sim)
             else:
-                sim = DtSimulateLocation(ld)
-                ctx.state['connected'] = True
-                ctx.state['error']     = None
-                log.info(f'[{ctx.name}] GPS connected (legacy)')
-                await _legacy_command_loop(ctx, sim)
+                try:
+                    sim = DtSimulateLocation(ld)
+                    ctx.state['connected'] = True
+                    ctx.state['error']     = None
+                    log.info(f'[{ctx.name}] GPS connected (legacy)')
+                    await _legacy_command_loop(ctx, sim)
+                finally:
+                    closer = getattr(ld, 'close', None)
+                    if closer is not None:
+                        try: closer()
+                        except Exception: pass
         except Exception as e:
             ctx.state['connected']  = False
             ctx.state['simulating'] = False

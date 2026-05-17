@@ -533,14 +533,21 @@ window.onload = () => {
 };
 
 // ── WebSocket ──────────────────────────────────────────────────────────
-let _ws = null, _wsBackoff = 1000;
+let _ws = null, _wsBackoff = 1000, _wsReconnectTimer = null;
 function connectWS() {
+  _wsReconnectTimer = null;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const url = `${proto}//${location.host}/ws/status`;
   try {
     _ws = new WebSocket(url);
   } catch(e) { scheduleWSReconnect(); return; }
 
+  let dead = false;
+  const onDead = () => {
+    if (dead) return;
+    dead = true;
+    scheduleWSReconnect();
+  };
   _ws.onopen = () => {
     _wsBackoff = 1000;
     document.getElementById('launcher-sub').textContent = 'WebSocket 已連線';
@@ -549,10 +556,12 @@ function connectWS() {
     let msg; try { msg = JSON.parse(e.data); } catch { return; }
     handleWSMessage(msg.type, msg.data);
   };
-  _ws.onclose = _ws.onerror = () => scheduleWSReconnect();
+  _ws.onclose = onDead;
+  _ws.onerror = onDead;
 }
 function scheduleWSReconnect() {
-  setTimeout(() => connectWS(), _wsBackoff);
+  if (_wsReconnectTimer) return;
+  _wsReconnectTimer = setTimeout(() => connectWS(), _wsBackoff);
   _wsBackoff = Math.min(_wsBackoff * 2, 30000);
 }
 function sendWS(type, data) {
